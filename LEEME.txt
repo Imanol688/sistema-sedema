@@ -1,0 +1,9 @@
+SEDEMA v1.7.1 - Limpieza visual de requerimientos
+
+Cambios:
+- Se eliminaron las etiquetas RF2.2, RF2.3, RF2.4 y RF2.5 de la interfaz.
+- Se conservaron los títulos y descripciones funcionales.
+- No requiere cambios en la base de datos.
+
+Instalación:
+Copiar el contenido del parche sobre C:\xampp\htdocs\sedema-auth\ y reemplazar los archivos indicados.

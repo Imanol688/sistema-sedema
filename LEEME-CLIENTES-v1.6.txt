@@ -1,0 +1,10 @@
+SEDEMA v1.6 - Módulo Clientes
+
+1) Hacer respaldo del proyecto y de sedema_db.
+2) Fusionar este parche con C:\xampp\htdocs\sedema-auth\ (NO borrar carpetas completas y NO reemplazar .env).
+3) En phpMyAdmin seleccionar sedema_db e importar UNA SOLA VEZ database/006_clients_schema.sql.
+4) Reiniciar Apache.
+5) Ingresar al dashboard y abrir Clientes.
+
+El módulo incluye alta, consulta, modificación, clasificación y baja/reactivación lógica.
+No implementa todavía Pedidos, Ajustes, Remitos ni Facturación.

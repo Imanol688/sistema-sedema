@@ -1,0 +1,16 @@
+SEDEMA - Usuarios y Accesos v1.5
+
+1. Hacer copia de seguridad de C:\xampp\htdocs\sedema-auth y de sedema_db.
+2. Fusionar el contenido de este parche con C:\xampp\htdocs\sedema-auth\ (no borrar carpetas completas).
+3. Conservar el archivo .env actual.
+4. En phpMyAdmin seleccionar sedema_db e importar database/005_user_account_management.sql una sola vez.
+5. Reiniciar Apache.
+
+Cambios:
+- Modificar correo electrónico desde Administrar cuenta.
+- Eliminar una cuenta desde Administrar cuenta.
+- Seleccionar varias cuentas y eliminarlas desde el listado.
+- No se permite eliminar la propia cuenta del administrador conectado.
+- El legajo y las referencias históricas se conservan.
+- Una cuenta eliminada desaparece del listado y ya no puede iniciar sesión.
+- Si posteriormente se crea nuevamente una cuenta para el mismo DNI, se reutiliza de forma segura el registro histórico.

@@ -1,0 +1,30 @@
+SEDEMA - Usuarios y Accesos v1.2
+================================
+
+INSTALACION SOBRE LA VERSION PERSONAL v1.1
+
+1) Hacer backup de la base sedema_db desde phpMyAdmin.
+2) Copiar/reemplazar los archivos del parche manteniendo las carpetas.
+3) En phpMyAdmin seleccionar sedema_db.
+4) Ejecutar database/004_user_access_schema.sql UNA sola vez.
+5) Conservar el .env actual del proyecto.
+6) Para probar sin correo real, mantener MAIL_TRANSPORT=log.
+   La contraseña temporal quedará únicamente dentro del correo simulado en:
+   storage/logs/mail.log
+7) Para Gmail real, agregar al .env:
+   MAIL_TRANSPORT=smtp
+   MAIL_FROM=cuenta-emisora@gmail.com
+   MAIL_SMTP_HOST=smtp.gmail.com
+   MAIL_SMTP_PORT=465
+   MAIL_SMTP_USERNAME=cuenta-emisora@gmail.com
+   MAIL_SMTP_PASSWORD=CONTRASENA_DE_APLICACION
+8) Iniciar Apache y MySQL en XAMPP.
+9) Ingresar como Administrador -> Personal y usuarios -> Usuarios y accesos.
+10) Crear una cuenta y asignar sector/rol/permisos.
+11) El empleado ingresa con correo o DNI + contraseña temporal.
+12) El sistema lo obliga a definir usuario definitivo y nueva contraseña antes del dashboard.
+
+IMPORTANTE
+- No reemplazar el .env actual con .env.example.
+- No volver a importar sedema_db completa.
+- La contraseña temporal tiene exactamente 8 caracteres y solo se almacena como hash.
