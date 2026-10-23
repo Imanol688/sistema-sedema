@@ -112,6 +112,7 @@ final class SupplierPage
     </main>
 </div>
 <script src="../assets/js/dashboard.js" defer></script>
+<script src="../assets/js/inventory.js" defer></script>
 
 </body>
 </html>

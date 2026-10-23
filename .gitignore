@@ -1,4 +1,7 @@
 /.env
-/storage/logs/*.log
+/.env.*
+!/.env.example
+/storage/logs/*
 !/storage/logs/.gitkeep
-
+/public/uploads/profiles/*
+!/public/uploads/profiles/.htaccess

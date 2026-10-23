@@ -39,7 +39,7 @@ final class InventoryRepository
             'SELECT COUNT(p.idProduct) AS products,
                     COALESCE(SUM(CASE WHEN s.quantity > 0 THEN 1 ELSE 0 END), 0) AS stockPositions,
                     COALESCE(SUM(CASE WHEN s.minimumStock > 0 AND s.quantity <= s.minimumStock THEN 1 ELSE 0 END), 0) AS lowStock,
-                    COALESCE(SUM(CASE WHEN s.quantity = 0 THEN 1 ELSE 0 END), 0) AS outOfStock
+                    COALESCE(SUM(CASE WHEN COALESCE(s.quantity, 0) = 0 THEN 1 ELSE 0 END), 0) AS outOfStock
              FROM inventory_product p
              LEFT JOIN inventory_stock s ON s.idProduct = p.idProduct AND s.idWarehouse = ?
              WHERE p.active = 1'
@@ -243,13 +243,58 @@ final class InventoryRepository
         $statement->execute([$code, $name, $symbol, $allowsDecimals ? 1 : 0]);
     }
 
-    public function addWarehouse(string $name, string $address, string $description): void
+    public function addWarehouse(string $name, string $address, string $description): int
     {
         $statement = $this->db->prepare(
             'INSERT INTO inventory_warehouse (name, address, description) VALUES (?, ?, ?)'
         );
         $statement->execute([$name, $address !== '' ? $address : null, $description !== '' ? $description : null]);
+        return (int) $this->db->lastInsertId();
     }
+
+    public function activeCatalog(string $type, int $id): bool
+    {
+        [$table, $key] = $type === 'category' ? ['inventory_category', 'idCategory'] : ['inventory_unit', 'idUnit'];
+        $s = $this->db->prepare("SELECT 1 FROM $table WHERE $key=? AND active=1");
+        $s->execute([$id]);
+        return (bool) $s->fetchColumn();
+    }
+
+    public function lockProduct(int $id): ?array
+    {
+        $s = $this->db->prepare('SELECT * FROM inventory_product WHERE idProduct=? FOR UPDATE');
+        $s->execute([$id]);
+        return $s->fetch() ?: null;
+    }
+
+    public function hasProductActivity(int $id): bool
+    {
+        foreach ([
+            'SELECT 1 FROM inventory_stock WHERE idProduct=? AND quantity<>0 LIMIT 1',
+            'SELECT 1 FROM inventory_movement WHERE idProduct=? LIMIT 1',
+            'SELECT 1 FROM detallepedido WHERE COALESCE(idInventoryProduct,idProducto)=? LIMIT 1',
+            'SELECT 1 FROM detalleremito WHERE idProducto=? LIMIT 1',
+        ] as $sql) {
+            $s=$this->db->prepare($sql); $s->execute([$id]);
+            if ($s->fetchColumn()) return true;
+        }
+        return false;
+    }
+
+    public function hasPendingOperations(int $id): bool
+    {
+        foreach ([
+            "SELECT 1 FROM detallepedido d JOIN pedido p ON p.idPedido=d.idPedido WHERE COALESCE(d.idInventoryProduct,d.idProducto)=? AND d.cantidadPendiente>0 AND p.estado NOT IN ('CANCELADO','CANCELADA','ANULADO','ANULADA') LIMIT 1",
+            "SELECT 1 FROM itemdespacho i JOIN despacho x ON x.idDespacho=i.idDespacho JOIN detallepedido d ON d.idDetalle=i.idDetallePedido WHERE COALESCE(d.idInventoryProduct,d.idProducto)=? AND x.estado IN ('EN_ESPERA','EN_PREPARACION','EN_RUTA') LIMIT 1",
+            "SELECT 1 FROM detalleremito d JOIN remitoproveedor r ON r.idRemitoProveedor=d.idRemitoProveedor WHERE d.idProducto=? AND r.estado NOT IN ('CANCELADA','RECEPCION_TOTAL') LIMIT 1",
+        ] as $sql) {
+            $s=$this->db->prepare($sql); $s->execute([$id]);
+            if ($s->fetchColumn()) return true;
+        }
+        return false;
+    }
+
+    public function db(): PDO { return $this->db; }
 
     public function transaction(callable $callback): mixed
     {

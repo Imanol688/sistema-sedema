@@ -9,6 +9,8 @@ final class LogisticsRepository
 {
     public function __construct(private readonly PDO $db) {}
 
+    public function db(): PDO { return $this->db; }
+
     public function transaction(callable $callback): mixed
     {
         $this->db->beginTransaction();
@@ -42,14 +44,14 @@ final class LogisticsRepository
     {
         return $this->db->query("SELECT p.idPedido, p.fecha, p.estado, p.modalidadOperativa, CONCAT(c.nombre,' ',COALESCE(c.apellido,'')) clienteNombre,
             SUM(dp.cantidadPendiente > 0) pendingLines, SUM(dp.cantidadPendiente) pendingTotal FROM pedido p JOIN cliente c ON c.idCliente=p.idCliente JOIN detallepedido dp ON dp.idPedido=p.idPedido
-            GROUP BY p.idPedido HAVING pendingTotal > 0 ORDER BY p.fecha DESC LIMIT 200")->fetchAll();
+            WHERE p.estado NOT IN ('CANCELADO','CANCELADA','ANULADO','ANULADA') GROUP BY p.idPedido HAVING pendingTotal > 0 ORDER BY p.fecha DESC LIMIT 200")->fetchAll();
     }
 
     /** @return list<array<string,mixed>> */
     public function orderItems(int $orderId, bool $lock = false): array
     {
         $sql = "SELECT dp.idDetalle, dp.idPedido, COALESCE(dp.idInventoryProduct, dp.idProducto) idProducto, dp.cantidadSolicitada, dp.cantidadPendiente,
-                    ip.code, ip.name productName, iu.symbol, iu.allowsDecimals,
+                    ip.code, ip.name productName, ip.active productActive, iu.symbol, iu.allowsDecimals,
                     COALESCE((SELECT SUM(ix.cantidadADespachar) FROM itemdespacho ix JOIN despacho dx ON dx.idDespacho=ix.idDespacho
                       WHERE ix.idDetallePedido=dp.idDetalle AND dx.estado IN ('EN_ESPERA','EN_PREPARACION')),0) reservado
                 FROM detallepedido dp JOIN inventory_product ip ON ip.idProduct=COALESCE(dp.idInventoryProduct, dp.idProducto) JOIN inventory_unit iu ON iu.idUnit=ip.idUnit
@@ -65,7 +67,7 @@ final class LogisticsRepository
 
     public function lockOrder(int $id): ?array { $s=$this->db->prepare('SELECT * FROM pedido WHERE idPedido=? FOR UPDATE'); $s->execute([$id]); $r=$s->fetch(); return is_array($r)?$r:null; }
     public function lockVehicle(int $id): ?array { $s=$this->db->prepare('SELECT * FROM vehiculo WHERE idVehiculo=? FOR UPDATE'); $s->execute([$id]); $r=$s->fetch(); return is_array($r)?$r:null; }
-    public function vehicleHasScheduleConflict(int $id,string $scheduled): bool { $s=$this->db->prepare("SELECT 1 FROM despacho WHERE idVehiculo=? AND fechaHoraProgramada=? AND estado IN ('EN_ESPERA','EN_PREPARACION','EN_RUTA') LIMIT 1");$s->execute([$id,$scheduled]);return(bool)$s->fetchColumn(); }
+    public function vehicleHasScheduleConflict(int $id,string $scheduled,int $exclude=0): bool { $s=$this->db->prepare("SELECT 1 FROM despacho WHERE idVehiculo=? AND fechaHoraProgramada=? AND estado IN ('EN_ESPERA','EN_PREPARACION','EN_RUTA') AND idDespacho<>? LIMIT 1 FOR UPDATE");$s->execute([$id,$scheduled,$exclude]);return(bool)$s->fetchColumn(); }
     public function warehouse(int $id): ?array { $s=$this->db->prepare('SELECT * FROM inventory_warehouse WHERE idWarehouse=? AND active=1'); $s->execute([$id]); $r=$s->fetch(); return is_array($r)?$r:null; }
 
     /** @param array<string,mixed> $data */
@@ -91,17 +93,33 @@ final class LogisticsRepository
     /** @return list<array<string,mixed>> */
     public function dispatchItems(int $id,bool $lock=false): array
     {
-        $sql='SELECT i.*,COALESCE(dp.idInventoryProduct,dp.idProducto) idProducto,dp.cantidadSolicitada,dp.cantidadPendiente,ip.code,ip.name productName,iu.symbol,iu.allowsDecimals FROM itemdespacho i JOIN detallepedido dp ON dp.idDetalle=i.idDetallePedido JOIN inventory_product ip ON ip.idProduct=COALESCE(dp.idInventoryProduct,dp.idProducto) JOIN inventory_unit iu ON iu.idUnit=ip.idUnit WHERE i.idDespacho=? ORDER BY i.idItemDespacho'.($lock?' FOR UPDATE':'');
+        $sql='SELECT i.*,COALESCE(dp.idInventoryProduct,dp.idProducto) idProducto,dp.cantidadSolicitada,dp.cantidadPendiente,ip.code,ip.name productName,iu.symbol,iu.allowsDecimals FROM itemdespacho i JOIN detallepedido dp ON dp.idDetalle=i.idDetallePedido JOIN inventory_product ip ON ip.idProduct=COALESCE(dp.idInventoryProduct,dp.idProducto) JOIN inventory_unit iu ON iu.idUnit=ip.idUnit WHERE i.idDespacho=? ORDER BY COALESCE(dp.idInventoryProduct,dp.idProducto),i.idItemDespacho'.($lock?' FOR UPDATE':'');
         $s=$this->db->prepare($sql);$s->execute([$id]);return $s->fetchAll();
     }
     /** @return list<array<string,mixed>> */
     public function history(int $id): array { $s=$this->db->prepare("SELECT h.*,COALESCE(CONCAT(e.nombre,' ',e.apellido),u.username,'Sistema') actorName FROM despacho_estado_historial h LEFT JOIN usuario u ON u.idUsuario=h.idUsuario LEFT JOIN empleado e ON e.idEmpleado=u.idEmpleado WHERE h.idDespacho=? ORDER BY h.creadoEn DESC,h.idHistorial DESC");$s->execute([$id]);return $s->fetchAll(); }
-    public function stockForUpdate(int $productId,int $warehouseId): ?array { $s=$this->db->prepare('SELECT s.quantity,p.name productName,u.symbol FROM inventory_stock s JOIN inventory_product p ON p.idProduct=s.idProduct JOIN inventory_unit u ON u.idUnit=p.idUnit WHERE s.idProduct=? AND s.idWarehouse=? FOR UPDATE');$s->execute([$productId,$warehouseId]);$r=$s->fetch();return is_array($r)?$r:null; }
+    public function stockForUpdate(int $productId,int $warehouseId): ?array { $s=$this->db->prepare('SELECT s.quantity,p.name productName,p.active productActive,u.symbol FROM inventory_stock s JOIN inventory_product p ON p.idProduct=s.idProduct JOIN inventory_unit u ON u.idUnit=p.idUnit WHERE s.idProduct=? AND s.idWarehouse=? FOR UPDATE');$s->execute([$productId,$warehouseId]);$r=$s->fetch();return is_array($r)?$r:null; }
     public function setStock(int $productId,int $warehouseId,float $quantity): void { $this->db->prepare('UPDATE inventory_stock SET quantity=? WHERE idProduct=? AND idWarehouse=?')->execute([$quantity,$productId,$warehouseId]); }
     public function addMovement(int $productId,int $warehouseId,string $type,float $qty,float $before,float $after,string $note,int $actor,string $ref): void { $this->db->prepare('INSERT INTO inventory_movement (idProduct,idWarehouse,movementType,quantity,previousQuantity,resultingQuantity,observations,actorUserId,sourceModule,sourceReference) VALUES (?,?,?,?,?,?,?,?,\'LOGISTICA\',?)')->execute([$productId,$warehouseId,$type,$qty,$before,$after,$note,$actor?:null,$ref]); }
     public function reducePending(int $detailId,float $qty): bool { $s=$this->db->prepare('UPDATE detallepedido SET cantidadPendiente=cantidadPendiente-? WHERE idDetalle=? AND cantidadPendiente>=?');$s->execute([$qty,$detailId,$qty]);return $s->rowCount()===1; }
-    public function restorePending(int $detailId,float $qty): void { $this->db->prepare('UPDATE detallepedido SET cantidadPendiente=LEAST(cantidadSolicitada,cantidadPendiente+?) WHERE idDetalle=?')->execute([$qty,$detailId]); }
-    public function updateDispatchState(int $id,string $state): void { $column=['EN_RUTA'=>'despachadoEn','ENTREGADO'=>'entregadoEn','DEVUELTO'=>'devueltoEn'][$state]??null; $sql='UPDATE despacho SET estado=?'.($column?', '.$column.'=NOW()':'').' WHERE idDespacho=?';$this->db->prepare($sql)->execute([$state,$id]); }
+    public function restorePending(int $detailId,float $qty): void { $s=$this->db->prepare('UPDATE detallepedido SET cantidadPendiente=cantidadPendiente+? WHERE idDetalle=? AND cantidadPendiente+?<=cantidadSolicitada');$s->execute([$qty,$detailId,$qty]);if($s->rowCount()!==1)throw new LogisticsException('La devolución excede la cantidad originalmente solicitada.'); }
+    public function updateDispatchState(int $id,string $state): void { $column=['EN_RUTA'=>'despachadoEn','ENTREGADO'=>'entregadoEn','DEVUELTO'=>'devueltoEn'][$state]??null; $sql='UPDATE despacho SET estado=?,operationVersion=operationVersion+1'.($column?', '.$column.'=NOW()':'').' WHERE idDespacho=?';$this->db->prepare($sql)->execute([$state,$id]); }
+    public function reprogram(int $id, string $date, ?int $vehicle): void
+    {
+        $s=$this->db->prepare('UPDATE despacho SET fechaHoraProgramada=?,idVehiculo=?,operationVersion=operationVersion+1 WHERE idDespacho=?');
+        $s->execute([$date,$vehicle,$id]);
+    }
+    public function hasOpenDispatches(int $id): bool
+    {
+        $s=$this->db->prepare("SELECT 1 FROM despacho WHERE idVehiculo=? AND estado IN ('EN_ESPERA','EN_PREPARACION','EN_RUTA') LIMIT 1");
+        $s->execute([$id]); return (bool)$s->fetchColumn();
+    }
+    public function releaseVehicle(int $id, int $dispatchId): void
+    {
+        $this->lockVehicle($id);
+        $s=$this->db->prepare("UPDATE vehiculo SET estado='DISPONIBLE' WHERE idVehiculo=? AND estado='OCUPADO' AND NOT EXISTS (SELECT 1 FROM despacho WHERE idVehiculo=? AND idDespacho<>? AND estado='EN_RUTA')");
+        $s->execute([$id,$id,$dispatchId]);
+    }
     public function setVehicleState(int $id,string $state): void { $this->db->prepare('UPDATE vehiculo SET estado=? WHERE idVehiculo=?')->execute([$state,$id]); }
     /** @param array<string,mixed> $data */
     public function saveVehicle(array $data): int { if((int)$data['id']>0){$this->db->prepare('UPDATE vehiculo SET matricula=:plate,modelo=:model,capacidadCarga=:capacity,estado=:state WHERE idVehiculo=:id')->execute($data);return (int)$data['id'];} unset($data['id']);$this->db->prepare('INSERT INTO vehiculo (matricula,modelo,capacidadCarga,estado,activo) VALUES (:plate,:model,:capacity,:state,1)')->execute($data);return(int)$this->db->lastInsertId(); }

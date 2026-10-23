@@ -24,7 +24,7 @@ InventoryPage::begin('Registrar movimiento', 'movement', $user);
 
 <div class="inventory-form-columns">
     <form class="inventory-form" method="post" action="action.php">
-        <input type="hidden" name="csrf_token" value="<?= e(Csrf::token()) ?>"><input type="hidden" name="action" value="movement">
+        <input type="hidden" name="csrf_token" value="<?= e(Csrf::token()) ?>"><?php /* Clave de esta operación; no reemplaza el token CSRF. */ ?><input type="hidden" name="operation_key" value="<?= \Sedema\Inventory\OperationGuard::newKey() ?>"><input type="hidden" name="action" value="movement">
         <section class="form-section">
             <div class="form-section-heading"><span>01</span><div><h3>Ingreso, egreso o ajuste</h3><p>Para operaciones realizadas dentro de Inventario.</p></div></div>
             <div class="form-grid single-column">
@@ -39,7 +39,7 @@ InventoryPage::begin('Registrar movimiento', 'movement', $user);
     </form>
 
     <form class="inventory-form" method="post" action="action.php">
-        <input type="hidden" name="csrf_token" value="<?= e(Csrf::token()) ?>"><input type="hidden" name="action" value="transfer">
+        <input type="hidden" name="csrf_token" value="<?= e(Csrf::token()) ?>"><?php /* Clave de esta operación; no reemplaza el token CSRF. */ ?><input type="hidden" name="operation_key" value="<?= \Sedema\Inventory\OperationGuard::newKey() ?>"><input type="hidden" name="action" value="transfer">
         <section class="form-section">
             <div class="form-section-heading"><span>02</span><div><h3>Transferencia</h3><p>Mueve existencias entre dos depósitos en una sola operación.</p></div></div>
             <div class="form-grid single-column">

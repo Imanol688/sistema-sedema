@@ -1,0 +1,46 @@
+.supplier-remit-page { min-height: 100vh; padding: 28px 16px; background: var(--canvas, #edf1f5); color: #182744; }
+.supplier-remit-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; max-width: 960px; margin: 0 auto 18px; }
+.supplier-remit { max-width: 960px; margin: auto; padding: 40px; background: white; border-top: 6px solid var(--accent, #e4ab52); box-shadow: 0 12px 35px #18274412; }
+.supplier-remit-heading { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 22px; border-bottom: 2px solid #182744; }
+.supplier-remit-brand { margin: 0 0 8px; font-weight: 900; letter-spacing: .1em; }
+.supplier-remit h1 { margin: 0; font-size: 1.8rem; line-height: 1.2; }
+.supplier-remit-heading p:last-child { margin-bottom: 0; font-size: .85rem; }
+.supplier-remit-number { min-width: 140px; max-width: 45%; text-align: right; overflow-wrap: anywhere; }
+.supplier-remit-number span, .supplier-remit-meta span { display: block; margin-bottom: 6px; font-size: .75rem; color: #596677; }
+.supplier-remit-number strong { font-size: 1.4rem; }
+.supplier-remit-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin: 24px 0; }
+.supplier-remit-meta strong { font-size: .9rem; }
+.supplier-remit-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin: 25px 0; }
+.supplier-remit h2 { font-size: .85rem; text-transform: uppercase; margin: 0 0 10px; }
+.supplier-remit-parties p { margin: 5px 0; line-height: 1.5; font-size: .9rem; overflow-wrap: anywhere; }
+.supplier-remit-items { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.supplier-remit-items th { background: #182744; color: white; padding: 10px 8px; text-align: left; }
+.supplier-remit-items td { padding: 12px 8px; border-bottom: 1px solid #d9dfe7; vertical-align: top; overflow-wrap: anywhere; }
+.supplier-remit-items .numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.supplier-remit-items td:nth-child(2) { width: 30%; }
+.supplier-remit-total { display: flex; justify-content: flex-end; gap: 25px; margin: 24px 0 12px; break-inside: avoid; }
+.supplier-remit-total strong { font-size: 1.25rem; }
+.supplier-remit-note { font-size: .8rem; color: #596677; line-height: 1.5; }
+.supplier-remit-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 75px; break-inside: avoid; }
+.supplier-remit-signatures div { border-top: 1px solid #596677; padding-top: 10px; text-align: center; font-size: .75rem; }
+.supplier-remit-status { border: 2px solid #182744; padding: 12px; font-weight: 800; text-align: center; }
+@media screen and (max-width: 640px) {
+  .supplier-remit { padding: 20px 12px; }
+  .supplier-remit-heading { flex-direction: column; }
+  .supplier-remit-number { max-width: none; text-align: left; }
+  .supplier-remit-parties { grid-template-columns: 1fr; }
+  .supplier-remit-items { font-size: .7rem; }
+  .supplier-remit-items td, .supplier-remit-items th { padding: 8px 3px; }
+}
+@page { size: A4; margin: 15mm; }
+@media print {
+  .supplier-remit-page { min-height: 0; padding: 0; background: white; color: black; }
+  .supplier-remit-actions { display: none !important; }
+  .supplier-remit { max-width: none; padding: 0; margin: 0; border: 0; box-shadow: none; font-size: 10pt; }
+  .supplier-remit-heading { break-inside: avoid; }
+  .supplier-remit-items thead { display: table-header-group; }
+  .supplier-remit-items tr { break-inside: avoid; }
+  .supplier-remit-items th { color: black; background: white; border-top: 1px solid black; border-bottom: 1px solid black; }
+  .supplier-remit-items td { border-bottom: 1px solid #999; }
+  .supplier-remit-parties, .supplier-remit-meta, .supplier-remit-status { break-inside: avoid; }
+}

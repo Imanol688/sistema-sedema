@@ -7,6 +7,8 @@ use Throwable;
 final class SupplierRepository
 {
     public function __construct(private readonly PDO $db) {}
+    public function db(): PDO { return $this->db; }
+
     public function transaction(callable $fn): mixed
     {
         $this->db->beginTransaction();
@@ -55,7 +57,7 @@ final class SupplierRepository
         return $this->rows('SELECT d.*,p.code,p.name,u.symbol,u.allowsDecimals,
             COALESCE((SELECT SUM(dr.cantidadRecibida) FROM detallerecepcion dr JOIN recepcioncompra rc ON rc.idRecepcion=dr.idRecepcion WHERE rc.idRemitoProveedor=d.idRemitoProveedor AND dr.idProducto=d.idProducto),0) AS received
             FROM detalleremito d JOIN inventory_product p ON p.idProduct=d.idProducto JOIN inventory_unit u ON u.idUnit=p.idUnit
-            WHERE d.idRemitoProveedor=? ORDER BY d.idDetalleRemito', [$id]);
+            WHERE d.idRemitoProveedor=? ORDER BY d.idProducto,d.idDetalleRemito', [$id]);
     }
     public function createOrder(int $supplier, string $number, string $date, array $lines): int
     {

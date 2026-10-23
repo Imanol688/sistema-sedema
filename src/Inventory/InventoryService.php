@@ -30,11 +30,11 @@ final class InventoryService
         if ($name === '' || mb_strlen($name) > 150) {
             throw new InventoryException('Ingresá un nombre de producto de hasta 150 caracteres.');
         }
-        if ($category < 1 || $unit < 1) {
+        if ($category < 1 || $unit < 1 || !$this->repository->activeCatalog('category', $category) || !$this->repository->activeCatalog('unit', $unit)) {
             throw new InventoryException('Seleccioná una categoría y una unidad de medida.');
         }
-        if ($price < 0) {
-            throw new InventoryException('El precio no puede ser negativo.');
+        if ($price > 9999999999.99 || abs($price - round($price, 2)) > 0.00001) {
+            throw new InventoryException('El precio admite hasta dos decimales y un máximo de 9999999999.99.');
         }
 
         $attributes = $this->parseAttributes((string) ($input['customAttributes'] ?? ''));
@@ -52,8 +52,11 @@ final class InventoryService
             return $this->repository->transaction(function () use ($id, $data, $minimums): int {
                 $productId = $id > 0 ? $id : $this->repository->createProduct($data);
                 if ($id > 0) {
-                    if (!$this->repository->product($id)) {
+                    if (!($current = $this->repository->lockProduct($id))) {
                         throw new InventoryException('El producto que intentás modificar no existe.');
+                    }
+                    if ((int) $current['idUnit'] !== (int) $data['unit'] && $this->repository->hasProductActivity($id)) {
+                        throw new InventoryException('No se puede cambiar la unidad de un producto con stock u operaciones registradas.');
                     }
                     $this->repository->updateProduct($id, $data);
                 }
@@ -78,10 +81,15 @@ final class InventoryService
 
     public function setProductActive(int $productId, bool $active): void
     {
-        if ($productId < 1 || !$this->repository->product($productId)) {
-            throw new InventoryException('El producto indicado no existe.');
-        }
-        $this->repository->setProductActive($productId, $active);
+        $this->repository->transaction(function () use ($productId, $active): void {
+            if ($productId < 1 || !$this->repository->lockProduct($productId)) {
+                throw new InventoryException('El producto indicado no existe.');
+            }
+            if (!$active && $this->repository->hasPendingOperations($productId)) {
+                throw new InventoryException('El producto tiene pedidos, despachos o compras pendientes. Completalos antes de darlo de baja.');
+            }
+            $this->repository->setProductActive($productId, $active);
+        });
     }
 
     /** @param array<string,mixed> $input */
@@ -103,11 +111,12 @@ final class InventoryService
         if ($observations === '' || mb_strlen($observations) > 500) {
             throw new InventoryException('Ingresá una observación de hasta 500 caracteres.');
         }
+        if (mb_strlen($sourceReference) > 100) throw new InventoryException('La referencia admite hasta 100 caracteres.');
         if (!preg_match('/^[A-Z][A-Z0-9_]{1,39}$/', $sourceModule)) {
             throw new InventoryException('El módulo de origen no es válido.');
         }
 
-        return $this->repository->transaction(function () use (
+        return OperationGuard::run($this->repository->db(), array_merge($input, ['_sourceModule' => $sourceModule]), $actorUserId, 'inventory.movement', function () use (
             $productId, $warehouseId, $type, $quantity, $observations, $actorUserId, $sourceModule, $sourceReference
         ): int {
             $stock = $this->repository->lockStock($productId, $warehouseId);
@@ -120,6 +129,9 @@ final class InventoryService
             $previous = (float) $stock['quantity'];
             $positive = in_array($type, ['INGRESO', 'AJUSTE_POSITIVO'], true);
             $resulting = round($previous + ($positive ? $quantity : -$quantity), 3);
+            if ($resulting > 99999999999.999) {
+                throw new InventoryException('La existencia resultante supera el máximo permitido.');
+            }
             if ($resulting < 0) {
                 throw new InventoryException('La operación dejaría el stock en negativo. Disponible: ' . $this->formatQuantity($previous) . ' ' . $stock['symbol'] . '.');
             }
@@ -157,7 +169,7 @@ final class InventoryService
             throw new InventoryException('Ingresá una observación de hasta 500 caracteres.');
         }
 
-        $this->repository->transaction(function () use ($productId, $from, $to, $quantity, $observations, $actorUserId): void {
+        OperationGuard::run($this->repository->db(), $input, $actorUserId, 'inventory.transfer', function () use ($productId, $from, $to, $quantity, $observations, $actorUserId): void {
             $ordered = [$from, $to];
             sort($ordered, SORT_NUMERIC);
             $locked = [];
@@ -174,6 +186,9 @@ final class InventoryService
             }
             $sourceResult = round((float) $source['quantity'] - $quantity, 3);
             $targetResult = round((float) $target['quantity'] + $quantity, 3);
+            if ($targetResult > 99999999999.999) {
+                throw new InventoryException('El depósito de destino supera el máximo permitido.');
+            }
             if ($sourceResult < 0) {
                 throw new InventoryException('El depósito de origen no tiene stock suficiente.');
             }
@@ -208,6 +223,9 @@ final class InventoryService
     /** @param array<string,mixed> $input */
     public function addCatalog(string $catalog, array $input): void
     {
+        if (mb_strlen(trim((string) ($input['description'] ?? ''))) > 255 || mb_strlen(trim((string) ($input['address'] ?? ''))) > 255) {
+            throw new InventoryException('La dirección y la descripción admiten hasta 255 caracteres.');
+        }
         try {
             if ($catalog === 'category') {
                 $name = $this->requiredText($input['name'] ?? '', 'Ingresá el nombre de la categoría.', 100);
@@ -224,18 +242,11 @@ final class InventoryService
             if ($catalog === 'warehouse') {
                 $name = $this->requiredText($input['name'] ?? '', 'Ingresá el nombre del depósito.', 100);
                 $this->repository->transaction(function () use ($name, $input): void {
-                    $this->repository->addWarehouse(
+                    $warehouseId = $this->repository->addWarehouse(
                         $name,
                         trim((string) ($input['address'] ?? '')),
                         trim((string) ($input['description'] ?? ''))
                     );
-                    $warehouseId = 0;
-                    foreach ($this->repository->warehouses() as $warehouse) {
-                        if ((string) $warehouse['name'] === $name) {
-                            $warehouseId = (int) $warehouse['idWarehouse'];
-                            break;
-                        }
-                    }
                     if ($warehouseId > 0) {
                         foreach ($this->repository->activeProductIds() as $productId) {
                             $this->repository->ensureStock($productId, $warehouseId, 0);
@@ -318,7 +329,11 @@ final class InventoryService
             }
             throw new InventoryException($label . ' debe ser un número válido con hasta tres decimales.');
         }
-        return round((float) $normalized, 3);
+        $number = (float) $normalized;
+        if (!is_finite($number) || $number > 99999999999.999) {
+            throw new InventoryException($label . ' supera el máximo de 99999999999.999.');
+        }
+        return round($number, 3);
     }
 
     private function requiredText(mixed $value, string $message, int $maxLength): string

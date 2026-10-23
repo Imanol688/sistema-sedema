@@ -2,6 +2,7 @@
 declare(strict_types=1);
 namespace Sedema\Suppliers;
 use PDOException;
+use Sedema\Inventory\OperationGuard;
 
 final class SupplierService
 {
@@ -11,7 +12,7 @@ final class SupplierService
         $raw = trim((string)$value);
         if (!preg_match('/^\d{1,11}(?:\.\d{1,' . $scale . '})?$/D', $raw)) throw new SupplierException($label . ' debe ser un número positivo con hasta ' . $scale . ' decimales (usar punto).');
         $number = (float)$raw;
-        if ($number <= 0 || $number > 99999999999) throw new SupplierException($label . ' está fuera de rango.');
+        if ($number <= 0 || $number > ($scale === 2 ? 9999999999.99 : 99999999999.999)) throw new SupplierException($label . ' está fuera de rango.');
         return number_format($number, $scale, '.', '');
     }
     public function saveSupplier(array $input): int
@@ -60,10 +61,11 @@ final class SupplierService
         $quantities=$input['received']??[];
         if ($id<1 || $actor<1 || !is_array($quantities) || mb_strlen($note)>500) throw new SupplierException('Datos de recepción inválidos.');
         if (!$this->repo->warehouse($warehouse)) throw new SupplierException('Seleccioná un depósito activo.');
-        return $this->repo->transaction(function () use ($id,$warehouse,$note,$quantities,$actor): int {
+        return OperationGuard::run($this->repo->db(), $input, $actor, 'suppliers.receive', function () use ($id,$warehouse,$note,$quantities,$actor): int {
             $order=$this->repo->order($id,true);
             if (!$order || in_array($order['estado'],['CANCELADA','RECEPCION_TOTAL'],true)) throw new SupplierException('Este remito no admite recepciones.');
             $lines=$this->repo->lines($id); $add=[]; $complete=true;
+            if (!$lines) throw new SupplierException('El remito no contiene productos.');
             foreach ($lines as $line) {
                 $product=(int)$line['idProducto']; $raw=trim((string)($quantities[$product]??''));
                 $value=($raw==='' || preg_match('/^0+(?:\.0{1,3})?$/D',$raw)) ? '0.000' : $this->decimal($raw,3,'La cantidad recibida');
@@ -83,11 +85,11 @@ final class SupplierService
                 $this->repo->receiptLine($receipt,$product,$quantity);
                 $this->repo->updateStock($product,$warehouse,number_format($after,3,'.',''));
                 $this->repo->movement($product,$warehouse,$quantity,number_format($before,3,'.',''),number_format($after,3,'.',''),
-                    'Recepción de remito ' . $order['numeroRemito'] . ($note!=='' ? ': ' . $note : ''),$actor,$receipt);
+                    mb_substr('Recepción de remito ' . $order['numeroRemito'] . ($note!=='' ? ': ' . $note : ''),0,500),$actor,$receipt);
             }
             $this->repo->status($id,$complete ? 'RECEPCION_TOTAL' : 'RECEPCION_PARCIAL');
             return $receipt;
-        });
+        }, SupplierException::class);
     }
     public function cancel(int $id): void
     {
