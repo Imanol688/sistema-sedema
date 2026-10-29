@@ -22,8 +22,13 @@ final class PaymentRepository
         if($status==='pending')$having=' HAVING saldo > 0.004';
         elseif($status==='paid')$having=' HAVING saldo <= 0.004';
         $sql="SELECT pe.idPedido,pe.fecha,pe.estado,pe.total,pe.modalidadOperativa,c.idCliente,c.nombre,c.apellido,c.cuitDNI,c.tipoCliente,
-            COALESCE((SELECT SUM(pg.importe) FROM pago pg WHERE pg.idPedido=pe.idPedido AND pg.estadoPago='APROBADO'),0) pagado,
-            GREATEST(pe.total-COALESCE((SELECT SUM(pg2.importe) FROM pago pg2 WHERE pg2.idPedido=pe.idPedido AND pg2.estadoPago='APROBADO'),0),0) saldo
+            (pe.estado IN ('CONFIRMADO','PENDIENTE')
+             AND NOT EXISTS (SELECT 1 FROM pago cp WHERE cp.idPedido=pe.idPedido)
+             AND NOT EXISTS (SELECT 1 FROM despacho cd WHERE cd.idPedido=pe.idPedido)
+             AND NOT EXISTS (SELECT 1 FROM factura cf WHERE cf.idPedido=pe.idPedido)
+             AND NOT EXISTS (SELECT 1 FROM current_account_movement cm WHERE cm.idPedido=pe.idPedido)) canCorrect,
+            COALESCE((SELECT SUM(pg.importe) FROM pago pg WHERE pg.idPedido=pe.idPedido AND pg.estadoPago='APROBADO' AND pg.tipoOperacion='PAGO'),0) pagado,
+            GREATEST(pe.total-COALESCE((SELECT SUM(pg2.importe) FROM pago pg2 WHERE pg2.idPedido=pe.idPedido AND pg2.estadoPago='APROBADO' AND pg2.tipoOperacion='PAGO'),0),0) saldo
             FROM pedido pe INNER JOIN cliente c ON c.idCliente=pe.idCliente
             WHERE ".implode(' AND ',$where).$having." ORDER BY pe.fecha DESC,pe.idPedido DESC LIMIT 250";
         $st=$this->db->prepare($sql);$st->execute($params);return $st->fetchAll();
@@ -33,7 +38,7 @@ final class PaymentRepository
     public function order(int $id): ?array
     {
         $st=$this->db->prepare("SELECT pe.*,c.nombre,c.apellido,c.cuitDNI,c.tipoCliente,c.razonSocial,c.direccion,c.localidad,c.telefono,
-            COALESCE((SELECT SUM(pg.importe) FROM pago pg WHERE pg.idPedido=pe.idPedido AND pg.estadoPago='APROBADO'),0) pagado
+            COALESCE((SELECT SUM(pg.importe) FROM pago pg WHERE pg.idPedido=pe.idPedido AND pg.estadoPago='APROBADO' AND pg.tipoOperacion='PAGO'),0) pagado
             FROM pedido pe INNER JOIN cliente c ON c.idCliente=pe.idCliente WHERE pe.idPedido=? LIMIT 1");
         $st->execute([$id]);$row=$st->fetch();return $row?:null;
     }
@@ -135,6 +140,33 @@ final class PaymentRepository
     {
         $st=$this->db->prepare("INSERT INTO current_account_movement(idCliente,idPedido,idPago,movementType,amount,description) VALUES(?,?,?,'DEBITO',?,'Imputación de pedido a cuenta corriente')");
         $st->execute([$clientId,$orderId,$paymentId,$amount]);
+    }
+
+    public function outstandingAccountDebt(int $orderId): float
+    {
+        $s=$this->db->prepare("SELECT COALESCE(SUM(CASE WHEN movementType='DEBITO' THEN amount ELSE -amount END),0) FROM current_account_movement WHERE idPedido=?");
+        $s->execute([$orderId]);return max(0,round((float)$s->fetchColumn(),2));
+    }
+
+    public function pendingBase(int $orderId): float
+    {
+        $s=$this->db->prepare("SELECT COALESCE(SUM(importeBase),0) FROM pago WHERE idPedido=? AND tipoOperacion='PAGO' AND estadoPago='PENDIENTE'");
+        $s->execute([$orderId]);return (float)$s->fetchColumn();
+    }
+
+    public function creditAccountPayment(int $paymentId): void
+    {
+        $payment=$this->payment($paymentId);
+        if (!$payment || $payment['tipoOperacion']!=='PAGO') return;
+        $s=$this->db->prepare("SELECT COALESCE(SUM(CASE WHEN movementType='CREDITO' THEN amount ELSE -amount END),0) FROM current_account_movement WHERE idPago=? AND description IN ('Cobro de deuda del pedido','Reversión de cobro de deuda del pedido')");
+        $s->execute([$paymentId]);$credited=round((float)$s->fetchColumn(),2);
+        $debt=$this->outstandingAccountDebt((int)$payment['idPedido']);
+        $net=$payment['estadoPago']==='APROBADO'?(float)$payment['importe']:0.0;
+        $expected=min(max(0,$debt+$credited),$net);
+        $delta=round($expected-$credited,2);
+        if (abs($delta)<0.005) return;
+        $this->db->prepare('INSERT INTO current_account_movement(idCliente,idPedido,idPago,movementType,amount,description) VALUES(?,?,?,?,?,?)')
+            ->execute([$payment['idCliente'],$payment['idPedido'],$paymentId,$delta>0?'CREDITO':'DEBITO',abs($delta),$delta>0?'Cobro de deuda del pedido':'Reversión de cobro de deuda del pedido']);
     }
 
     public function audit(int $paymentId,int $orderId,int $userId,string $event,string $detail=''): void

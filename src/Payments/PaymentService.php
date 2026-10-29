@@ -4,9 +4,11 @@ namespace Sedema\Payments;
 
 use Throwable;
 
+// SEDEMA - Hotfix de cobro en efectivo v2.4 (08/10/2026).
+
 final class PaymentService
 {
-    public const METHODS=['EFECTIVO','TARJETA','CHEQUE','TRANSFERENCIA'];
+    public const METHODS=['EFECTIVO','TARJETA','CHEQUE','TRANSFERENCIA','MERCADO_PAGO_QR'];
     public const OPERATIONS=['PAGO','CUENTA_CORRIENTE'];
 
     public function __construct(private readonly PaymentRepository $repo,private readonly PaymentGateway $gateway){}
@@ -14,6 +16,8 @@ final class PaymentService
     /** @param array<string,mixed> $input */
     public function register(array $input,int $actor): int
     {
+        $request=PaymentRequest::fromInput($input,$actor);
+        if (($existing=$request->existing($this->repo->db()))!==null) return $existing;
         $orderId=(int)($input['idPedido']??0);
         $order=$this->repo->order($orderId);
         if(!$order)throw new PaymentException('El pedido no existe.');
@@ -36,7 +40,12 @@ final class PaymentService
         if($adjType==='NINGUNO')$pct=0;
         $adj=round($requested*$pct/100,2);
         $finalAmount=$adjType==='DESCUENTO'?max(0,round($requested-$adj,2)):round($requested+$adj,2);
+        if ($pct>0 && ($operation==='CUENTA_CORRIENTE' || $this->repo->outstandingAccountDebt($orderId)>0)) throw new PaymentException('Las imputaciones y cobros de cuenta corriente se registran sin ajustes adicionales.');
         if($finalAmount<=0)throw new PaymentException('El importe final del cobro debe ser mayor a cero.');
+
+        if($operation==='PAGO'&&strtoupper(trim((string)($input['medioPago']??'')))==='MERCADO_PAGO_QR'){
+            return (new MercadoPagoQrService($this->repo))->register($orderId,$actor,$requested,$finalAmount,$adjType,$pct,$adj,trim((string)($input['observaciones']??'')),$request);
+        }
 
         $method=null;
         $status='APROBADO';
@@ -49,8 +58,15 @@ final class PaymentService
             if(!in_array($method,self::METHODS,true))throw new PaymentException('Seleccioná un medio de pago válido.');
 
             if($method==='EFECTIVO'){
-                $cashReceived=$this->money($input['importeRecibido']??0);
-                if($cashReceived+0.004<$finalAmount)throw new PaymentException('El importe recibido no alcanza para cubrir el cobro.');
+                $receivedRaw=trim((string)($input['importeRecibido']??''));
+                // Si el navegador no envía el campo, se interpreta como pago exacto.
+                // Un importe ingresado manualmente continúa validándose normalmente.
+                $cashReceived=$receivedRaw===''?$finalAmount:$this->money($receivedRaw);
+                if($cashReceived+0.004<$finalAmount){
+                    throw new PaymentException(
+                        'El importe recibido ($'.number_format($cashReceived,2,',','.').') no alcanza para cubrir el cobro ($'.number_format($finalAmount,2,',','.').').'
+                    );
+                }
                 $cashChange=round($cashReceived-$finalAmount,2);
             }elseif($method==='CHEQUE'){
                 $bank=trim((string)($input['chequeBanco']??''));
@@ -70,6 +86,18 @@ final class PaymentService
         $db=$this->repo->db();
         $db->beginTransaction();
         try{
+            if (($existing=$request->start($db))!==null) { $db->commit(); return $existing; }
+            $lock = $db->prepare('SELECT total,estado FROM pedido WHERE idPedido=? FOR UPDATE');
+            $lock->execute([$orderId]);
+            $current = $lock->fetch();
+            if (!$current || (string) $current['estado'] === 'CANCELADO' || (float) $current['total'] !== (float) $order['total']) {
+                throw new PaymentException('El pedido cambió o fue eliminado. Volvé a abrirlo antes de cobrar.');
+            }
+            $fresh = $this->repo->order($orderId);
+            if($pending=MercadoPagoQrService::pending($db,$orderId))throw new PaymentException('El pedido tiene el cobro QR #'.$pending.' pendiente. Verificalo o cancelalo antes de registrar otro pago.');
+            if (abs((float) $fresh['pagado'] - $paid) > 0.004) throw new PaymentException('Otro cobro modificó el saldo. Volvé a abrir el pedido.');
+            if ($this->repo->pendingBase($orderId)>0.004) throw new PaymentException('Resolvé el cobro pendiente antes de registrar otra operación.');
+            if ($operation==='CUENTA_CORRIENTE' && $requested > $balance-$this->repo->outstandingAccountDebt($orderId)+0.004) throw new PaymentException('Ese saldo ya fue imputado a cuenta corriente.');
             $notes=trim((string)($input['observaciones']??''));
             $paymentId=$this->repo->insertPayment($orderId,$actor,$requested,$finalAmount,$method,$status,$operation,null,$notes);
             if($pct>0)$this->repo->insertAdjustment($paymentId,$adjType,$pct,$adj);
@@ -79,6 +107,7 @@ final class PaymentService
                 $this->repo->addCurrentAccountDebit((int)$order['idCliente'],$orderId,$paymentId,$finalAmount);
                 $this->repo->audit($paymentId,$orderId,$actor,'CURRENT_ACCOUNT_CHARGE','Cuenta corriente $'.number_format($finalAmount,2,'.',''));
             }elseif($method==='EFECTIVO'){
+                $this->repo->creditAccountPayment($paymentId);
                 $this->repo->insertCashDetail($paymentId,(float)$cashReceived,(float)$cashChange);
                 if($pct>0)$this->repo->applyAdjustmentToOrder($paymentId,$orderId,$adjType,$adj);
                 $this->repo->audit($paymentId,$orderId,$actor,'PAYMENT_APPROVED','EFECTIVO $'.number_format($finalAmount,2,'.',''));
@@ -95,6 +124,7 @@ final class PaymentService
                 if($gateway['status']==='APPROVED')$this->approve($paymentId,$actor,false);
             }
 
+            $request->finish($db,$paymentId);
             $db->commit();
             return $paymentId;
         }catch(Throwable $e){
@@ -108,6 +138,7 @@ final class PaymentService
     {
         $payment=$this->repo->payment($paymentId);
         if(!$payment)throw new PaymentException('El cobro no existe.');
+        if((string)$payment['medioPago']==='MERCADO_PAGO_QR')return (new MercadoPagoQrService($this->repo))->verify($paymentId,$actor);
         if((string)$payment['estadoPago']!=='PENDIENTE')return (string)$payment['estadoPago'];
         if(!in_array((string)$payment['medioPago'],['TARJETA','TRANSFERENCIA'],true))throw new PaymentException('Este medio de pago no se verifica mediante pasarela.');
         $external=trim((string)($payment['externalId']??$payment['transaccionExternaID']??''));
@@ -143,8 +174,14 @@ final class PaymentService
         if(!$payment)throw new PaymentException('El cobro no existe.');
         if((string)$payment['medioPago']!=='CHEQUE')throw new PaymentException('La operación no corresponde a un cheque.');
         if((string)$payment['estadoPago']!=='PENDIENTE')throw new PaymentException('El cheque ya fue procesado.');
-        $this->repo->markPaymentRejected($paymentId);
-        $this->repo->audit($paymentId,(int)$payment['idPedido'],$actor,'CHECK_REJECTED',(string)($payment['checkNumber']??''));
+        $db=$this->repo->db();$db->beginTransaction();
+        try {
+            $s=$db->prepare('SELECT idPedido FROM pedido WHERE idPedido=? FOR UPDATE');$s->execute([$payment['idPedido']]);
+            $s=$db->prepare("UPDATE pago SET estadoPago='RECHAZADO' WHERE idPago=? AND estadoPago='PENDIENTE'");$s->execute([$paymentId]);
+            if($s->rowCount()!==1)throw new PaymentException('El cheque ya fue procesado.');
+            $this->repo->audit($paymentId,(int)$payment['idPedido'],$actor,'CHECK_REJECTED',(string)($payment['checkNumber']??''));
+            $db->commit();
+        } catch(Throwable $e) {if($db->inTransaction())$db->rollBack();throw $e;}
     }
 
     public function mockApprove(int $paymentId,int $actor): void
@@ -162,17 +199,57 @@ final class PaymentService
     {
         $payment=$this->repo->payment($paymentId);
         if(!$payment)throw new PaymentException('El cobro no existe.');
-        if((string)$payment['estadoPago']==='APROBADO')return;
-        $this->repo->markPaymentApproved($paymentId);
-        if(!empty($payment['adjustmentType']) && empty($payment['adjustmentAppliedAt'])){
-            $this->repo->applyAdjustmentToOrder($paymentId,(int)$payment['idPedido'],(string)$payment['adjustmentType'],(float)$payment['adjustmentAmount']);
-        }
-        if($audit)$this->repo->audit($paymentId,(int)$payment['idPedido'],$actor,'PAYMENT_APPROVED',$this->operationLabel($payment).' $'.number_format((float)$payment['importe'],2,'.',''));
+        $db=$this->repo->db();$owns=!$db->inTransaction();
+        if($owns)$db->beginTransaction();
+        try {
+            $s=$db->prepare('SELECT estado FROM pedido WHERE idPedido=? FOR UPDATE');$s->execute([$payment['idPedido']]);
+            if($s->fetchColumn()==='CANCELADO')throw new PaymentException('El pedido está cancelado.');
+            $s=$db->prepare('SELECT estadoPago FROM pago WHERE idPago=? FOR UPDATE');$s->execute([$paymentId]);$state=$s->fetchColumn();
+            if($state==='RECHAZADO')throw new PaymentException('El cobro fue rechazado y no puede aprobarse.');
+            if($state!=='APROBADO') {
+                $payment=$this->repo->payment($paymentId);
+                $this->repo->markPaymentApproved($paymentId);
+                if(!empty($payment['adjustmentType']) && empty($payment['adjustmentAppliedAt'])) {
+                    $this->repo->applyAdjustmentToOrder($paymentId,(int)$payment['idPedido'],(string)$payment['adjustmentType'],(float)$payment['adjustmentAmount']);
+                }
+                $this->repo->creditAccountPayment($paymentId);
+                if($audit)$this->repo->audit($paymentId,(int)$payment['idPedido'],$actor,'PAYMENT_APPROVED',$this->operationLabel($payment).' $'.number_format((float)$payment['importe'],2,'.',''));
+            }
+            if($owns)$db->commit();
+        } catch(Throwable $e) {if($owns&&$db->inTransaction())$db->rollBack();throw $e;}
     }
 
     private function money(mixed $value): float
     {
-        return round((float)str_replace(',','.',trim((string)$value)),2);
+        $raw=preg_replace('/[^0-9,\.\-]/u','',trim((string)$value))??'';
+        if($raw===''||$raw==='-')return 0.0;
+
+        $negative=str_starts_with($raw,'-');
+        $raw=ltrim($raw,'-');
+        $comma=strrpos($raw,',');
+        $dot=strrpos($raw,'.');
+
+        if($comma!==false&&$dot!==false){
+            if($comma>$dot){
+                // Formato argentino: 240.000,50
+                $raw=str_replace('.','',$raw);
+                $raw=str_replace(',','.',$raw);
+            }else{
+                // Formato internacional: 240,000.50
+                $raw=str_replace(',','',$raw);
+            }
+        }elseif($comma!==false){
+            $decimals=strlen($raw)-$comma-1;
+            $raw=$decimals<=2
+                ?str_replace(',','.',str_replace('.','',$raw))
+                :str_replace(',','',$raw);
+        }elseif($dot!==false){
+            $parts=explode('.',$raw);
+            if(count($parts)>2||(count($parts)===2&&strlen($parts[1])===3))$raw=str_replace('.','',$raw);
+        }
+
+        $amount=(float)$raw;
+        return round($negative?-$amount:$amount,2);
     }
 
     private function validDate(string $date): bool
@@ -195,6 +272,7 @@ final class PaymentService
             'TARJETA'=>'Tarjeta',
             'CHEQUE'=>'Cheque',
             'TRANSFERENCIA'=>'Transferencia',
+            'MERCADO_PAGO_QR'=>'Mercado Pago QR (mostrador)',
             'CONTROLADOR'=>'Controlador (histórico)',
             default=>(string)$m,
         };

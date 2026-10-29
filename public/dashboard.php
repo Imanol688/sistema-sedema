@@ -29,16 +29,10 @@ $roleNames = [
 
 $modules = [
     'ventas' => [
-        'name' => 'Ventas y pedidos',
-        'description' => 'Registrar pedidos, consultar stock, aplicar ajustes y emitir comprobantes.',
+        'name' => 'Ventas/pedidos-Clientes',
+        'description' => 'Gestionar clientes, registrar pedidos y consultar stock.',
         'icon' => 'cart',
-        'href' => 'sales/index.php',
-    ],
-    'clientes' => [
-        'name' => 'Clientes',
-        'description' => 'Administrar el padrón y la clasificación comercial de cada cliente.',
-        'icon' => 'users',
-        'href' => 'clients/index.php',
+        'href' => 'commercial/index.php',
     ],
     'inventario' => [
         'name' => 'Inventario',
@@ -54,7 +48,7 @@ $modules = [
     ],
     'pagos' => [
         'name' => 'Pagos y cobranzas',
-        'description' => 'Registrar cobros, medios de pago y operaciones de cuenta corriente.',
+        'description' => 'Registrar cobros, gestionar cuenta corriente y emitir remitos y facturas.',
         'icon' => 'wallet',
         'href' => 'payments/index.php',
     ],
@@ -94,7 +88,7 @@ if (in_array('*', $permissions, true)) {
     $allowedKeys = array_keys($modules);
 } else {
     $permissionAliases = [
-        'ventas' => ['ventas', 'sales'],
+        'ventas' => ['ventas', 'sales', 'clientes', 'clients'],
         'clientes' => ['clientes', 'clients'],
         'inventario' => ['inventario', 'inventory'],
         'proveedores' => ['proveedores', 'suppliers'],
@@ -120,6 +114,8 @@ if (in_array('*', $permissions, true)) {
     }
 }
 
+// Existing client-only grants enter the same commercial module.
+if (in_array('clientes', $allowedKeys, true)) { $allowedKeys[] = 'ventas'; }
 $allowedKeys = array_values(array_unique($allowedKeys));
 $visibleModules = array_intersect_key($modules, array_flip($allowedKeys));
 $displayName = trim((string) ($user['name'] ?? $user['username']));

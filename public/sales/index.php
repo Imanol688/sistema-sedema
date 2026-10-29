@@ -21,8 +21,8 @@ SalesPage::begin('Pedidos de venta', 'orders', $user);
 ?>
 <section class="inventory-heading">
     <div>
-        <h2>Pedidos y comprobantes</h2>
-        <p>Carga de órdenes, consulta de stock, ajustes, remitos y facturación.</p>
+        <h2>Pedidos</h2>
+        <p>Carga de órdenes, consulta de stock y ajustes. Los comprobantes se emiten desde Pagos y cobranzas.</p>
     </div>
     <?php if (Authorization::can($user, 'sales.manage')): ?>
         <a class="button button-primary" href="order.php"><?= SalesPage::icon('plus') ?> Nuevo pedido</a>

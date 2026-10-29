@@ -24,14 +24,12 @@ $clients = $repository->clients();
 $selectedClientId = max(0, (int) ($_GET['client'] ?? 0));
 $items = $order ? $repository->items($id) : [];
 $adjustments = $order ? $repository->adjustments($id) : [];
-$remittance = $order ? $repository->remittanceByOrder($id) : null;
-$invoice = $order ? $repository->invoiceByOrder($id) : null;
 $paid = $order ? $repository->approvedPayments($id) : 0.0;
 
 SalesPage::begin($order ? 'Pedido #' . $id : 'Nuevo pedido', 'orders', $user);
 ?>
 <section class="inventory-heading">
-    <div><p class="section-kicker">Orden de venta</p><h2><?= $order ? 'Pedido #' . $id : 'Nuevo pedido' ?></h2><p><?= $order ? 'Consulta de la operación, comprobantes y estado.' : 'Seleccioná cliente, artículos y modalidad operativa.' ?></p></div>
+    <div><p class="section-kicker">Orden de venta</p><h2><?= $order ? 'Pedido #' . $id : 'Nuevo pedido' ?></h2><p><?= $order ? 'Consulta de la operación y estado.' : 'Seleccioná cliente, artículos y modalidad operativa.' ?></p></div>
     <a class="button button-secondary" href="index.php">Volver</a>
 </section>
 
@@ -80,20 +78,8 @@ SalesPage::begin($order ? 'Pedido #' . $id : 'Nuevo pedido', 'orders', $user);
     <?php if ($adjustments): ?><div class="panel-title-row"><div><h3>Ajustes aplicados</h3></div></div><?php foreach ($adjustments as $adjustment): ?><p><strong><?= e((string) $adjustment['tipoAjuste']) ?>:</strong> <?= number_format((float) $adjustment['porcentaje'], 2, ',', '.') ?>% · $<?= number_format((float) $adjustment['montoCalculado'], 2, ',', '.') ?></p><?php endforeach; ?><?php endif; ?>
 </section>
 
-<?php if ((string) $order['estado'] !== 'CANCELADO'): ?>
-<section class="inventory-form-columns">
-    <article class="inventory-panel"><div class="panel-title-row"><div><h3>Remito de salida</h3></div></div>
-        <?php if ($remittance): ?><p><strong><?= e((string) $remittance['numeroRemito']) ?></strong> · <?= e((string) $remittance['fechaHoraProgramada']) ?></p><a class="button button-secondary" href="remit.php?id=<?= $id ?>" target="_blank">Ver / imprimir remito</a>
-        <?php elseif (Authorization::can($user, 'sales.remit')): ?><form method="post" action="action.php"><input type="hidden" name="csrf_token" value="<?= e(Csrf::token()) ?>"><input type="hidden" name="action" value="issue-remit"><input type="hidden" name="idPedido" value="<?= $id ?>"><div class="field"><label>Fecha y hora *</label><input type="datetime-local" name="fechaHoraProgramada" required></div><div class="field"><label>Destino *</label><input name="destino" value="<?= e((string) ($order['direccionEntrega'] ?? $order['clientAddress'])) ?>" required></div><div class="field"><label>Transportista</label><input name="transportista"></div><div class="field"><label>Vehículo</label><select name="idVehiculo"><option value="0">Sin asignar</option><?php foreach ($repository->vehicles() as $vehicle): ?><option value="<?= (int) $vehicle['idVehiculo'] ?>"><?= e($vehicle['matricula'] . ' · ' . $vehicle['modelo'] . ' · ' . $vehicle['estado']) ?></option><?php endforeach; ?></select></div><div class="field"><label>Sucursal de origen</label><input name="sucursalOrigen" value="SEDEMA S.R.L."></div><button class="button button-primary" type="submit">Emitir remito</button></form>
-        <?php else: ?><p>No tenés permisos para emitir remitos.</p><?php endif; ?>
-    </article>
-
-    <article class="inventory-panel"><div class="panel-title-row"><div><h3>Factura</h3><p>Solo disponible para pedidos pagados.</p></div></div>
-        <?php if ($invoice): ?><p><strong>Factura <?= e((string) $invoice['tipoFactura']) ?></strong> · PV <?= (int) $invoice['puntoVenta'] ?> · Nº <?= (int) $invoice['nroComprobante'] ?></p><a class="button button-secondary" href="invoice.php?id=<?= $id ?>" target="_blank">Ver / imprimir factura</a>
-        <?php elseif (Authorization::can($user, 'sales.invoice')): ?><p>Pagado: $<?= number_format($paid, 2, ',', '.') ?> / $<?= number_format((float) $order['total'], 2, ',', '.') ?></p><form method="post" action="action.php"><input type="hidden" name="csrf_token" value="<?= e(Csrf::token()) ?>"><input type="hidden" name="action" value="issue-invoice"><input type="hidden" name="idPedido" value="<?= $id ?>"><div class="form-grid"><div class="field"><label>Tipo</label><select name="tipoFactura"><option>A</option><option selected>B</option><option>C</option></select></div><div class="field"><label>Punto de venta</label><input type="number" name="puntoVenta" min="1" value="1" required></div><div class="field"><label>Nº comprobante</label><input type="number" name="nroComprobante" min="1" required></div></div><div class="field"><label>Firma / aclaración</label><input name="firmayAclaracion" maxlength="150"></div><button class="button button-primary" type="submit" <?= $paid + 0.005 < (float) $order['total'] ? 'disabled' : '' ?>>Emitir factura</button></form>
-        <?php else: ?><p>No tenés permisos para facturar.</p><?php endif; ?>
-    </article>
-</section>
+<?php if (Authorization::can($user, 'payments.view') && (string) $order['estado'] !== 'CANCELADO'): ?>
+<div class="form-actions"><a class="button button-primary" href="../payments/collect.php?id=<?= $id ?>">Continuar a Pagos y cobranzas</a></div>
 <?php endif; ?>
 
 <?php if (Authorization::can($user, 'sales.manage') && !in_array((string) $order['estado'], ['FACTURADO', 'CANCELADO'], true)): ?>

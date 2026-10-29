@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Sedema\Sales;
 
 use Sedema\Csrf;
+use Sedema\Authorization;
 
 final class SalesPage
 {
@@ -28,8 +29,8 @@ final class SalesPage
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Módulo de clientes, pedidos y comprobantes del sistema SEDEMA.">
-    <title><?= e($title) ?> | Ventas SEDEMA</title>
+    <meta name="description" content="Módulo de clientes y pedidos del sistema SEDEMA.">
+    <title><?= e($title) ?> | Ventas/pedidos-Clientes SEDEMA</title>
     <link rel="stylesheet" href="../assets/css/styles.css">
 </head>
 <body class="dashboard-page inventory-page clients-page">
@@ -37,14 +38,18 @@ final class SalesPage
     <aside class="dashboard-sidebar" id="dashboard-sidebar">
         <div class="sidebar-brand">
             <div class="logo-crop dashboard-logo"><img src="../assets/img/sedema-logo.png" alt="SEDEMA S.R.L."></div>
-            <div><strong>SEDEMA</strong><span>Clientes y ventas</span></div>
+            <div><strong>SEDEMA</strong><span>Ventas/pedidos-Clientes</span></div>
         </div>
-        <nav class="sidebar-nav" aria-label="Navegación de clientes y ventas">
+        <nav class="sidebar-nav" aria-label="Navegación de Ventas/pedidos-Clientes">
             <p class="nav-label">Sistema</p>
             <a class="nav-item" href="../dashboard.php"><?= self::icon('home') ?><span>Panel principal</span></a>
-            <p class="nav-label">Módulo 2</p>
-            <a class="nav-item" href="../clients/index.php"><?= self::icon('clients') ?><span>Padrón de clientes</span></a>
-            <?= self::navItem('index.php', 'orders', 'Pedidos de venta', $active) ?>
+            <p class="nav-label">Ventas/pedidos-Clientes</p>
+            <?php if (Authorization::can($user, 'sales.view')): ?>
+                <?= self::navItem('../sales/index.php', 'orders', 'Pedidos', $active) ?>
+            <?php endif; ?>
+            <?php if (Authorization::can($user, 'clientes.view')): ?>
+                <?= self::navItem('../clients/index.php', 'clients', 'Clientes', $active) ?>
+            <?php endif; ?>
         </nav>
         <div class="sidebar-footer">
             <div class="user-menu" data-user-menu>
@@ -71,7 +76,7 @@ final class SalesPage
     <main class="dashboard-workspace">
         <header class="dashboard-topbar inventory-topbar">
             <button class="menu-button" type="button" data-sidebar-open aria-controls="dashboard-sidebar" aria-expanded="false"><?= self::icon('menu') ?><span class="sr-only">Abrir menú</span></button>
-            <div><p class="topbar-kicker">Clientes, pedidos y comprobantes</p><h1><?= e($title) ?></h1></div>
+            <div><p class="topbar-kicker">Ventas/pedidos-Clientes</p><h1><?= e($title) ?></h1></div>
             <div class="topbar-profile user-menu" data-user-menu>
                 <button class="user-menu-trigger" type="button" data-user-menu-trigger aria-expanded="false">
                     <?php if ($profilePhotoExists): ?>
@@ -116,14 +121,14 @@ final class SalesPage
 
     public static function flash(string $type, string $message): void
     {
-        $_SESSION['sales_flash'] = ['type' => $type, 'message' => $message];
+        $_SESSION['commercial_flash'] = ['type' => $type, 'message' => $message];
     }
 
     /** @return array{type:string,message:string}|null */
     private static function pullFlash(): ?array
     {
-        $flash = $_SESSION['sales_flash'] ?? null;
-        unset($_SESSION['sales_flash']);
+        $flash = $_SESSION['commercial_flash'] ?? $_SESSION['sales_flash'] ?? $_SESSION['client_flash'] ?? null;
+        unset($_SESSION['commercial_flash'], $_SESSION['sales_flash'], $_SESSION['client_flash']);
         return is_array($flash) && isset($flash['type'], $flash['message']) ? $flash : null;
     }
 

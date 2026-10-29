@@ -8,12 +8,21 @@ function loadEnvironment(string $path): void
     if (!is_file($path) || !is_readable($path)) {
         return;
     }
-    $values = parse_ini_file($path, false, INI_SCANNER_RAW);
+    // Aceptar .env guardado por el Bloc de notas con BOM UTF-8.
+    $contents = file_get_contents($path);
+    if ($contents === false) {
+        throw new RuntimeException('No se pudo leer el archivo .env.');
+    }
+    $contents = preg_replace('/^\xEF\xBB\xBF/', '', $contents) ?? $contents;
+    // El formato .env permite comentarios completos con #; INI usa punto y coma.
+    $contents = preg_replace('/^[\t ]*#/m', ';', $contents) ?? $contents;
+    $values = parse_ini_string($contents, false, INI_SCANNER_RAW);
     if ($values === false) {
         throw new RuntimeException('No se pudo leer la configuración de entorno.');
     }
     foreach ($values as $key => $value) {
-        if (getenv((string) $key) === false) {
+        // Para Mercado Pago, la configuración de este proyecto tiene prioridad.
+        if (str_starts_with((string) $key, 'MP_') || getenv((string) $key) === false) {
             putenv($key . '=' . $value);
             $_ENV[(string) $key] = (string) $value;
         }

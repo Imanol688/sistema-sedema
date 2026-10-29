@@ -32,20 +32,6 @@ try {
             SalesPage::flash('success', 'Pedido cancelado.');
             $target = 'order.php?id=' . $id;
             break;
-        case 'issue-remit':
-            Authorization::require($user, 'sales.remit');
-            $id = (int) ($_POST['idPedido'] ?? 0);
-            $service->issueRemittance($id, $_POST, (int) $user['id']);
-            SalesPage::flash('success', 'Remito emitido correctamente.');
-            $target = 'order.php?id=' . $id;
-            break;
-        case 'issue-invoice':
-            Authorization::require($user, 'sales.invoice');
-            $id = (int) ($_POST['idPedido'] ?? 0);
-            $service->issueInvoice($id, $_POST, (int) $user['id']);
-            SalesPage::flash('success', 'Factura emitida correctamente.');
-            $target = 'order.php?id=' . $id;
-            break;
         default:
             throw new SalesException('Operación inválida.');
     }

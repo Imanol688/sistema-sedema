@@ -26,6 +26,10 @@ final class LogisticsService
         $orderId=(int)($input['idPedido']??0); $warehouseId=(int)($input['idWarehouse']??0);
         $vehicleId=max(0,(int)($input['idVehiculo']??0)); $mode=(string)($input['modalidad']??'');
         $destination=trim((string)($input['destino']??'')); $notes=trim((string)($input['observacionesEntrega']??''));
+        $transport=trim((string)($input['transportista']??''));
+        $origin=trim((string)($input['sucursalOrigen']??''));
+        if (mb_strlen($transport)>150 || mb_strlen($origin)>100) throw new LogisticsException('Transportista u origen demasiado extensos.');
+        $reserveAvailable = !empty($input['_reserve_available']);
         $scheduled=trim((string)($input['fechaHoraProgramada']??''));
         if($orderId<1||$warehouseId<1) throw new LogisticsException('Seleccioná un pedido y un depósito de origen.');
         if(!in_array($mode,['EN_CORRALON','ENTREGA_DOMICILIO'],true)) throw new LogisticsException('Seleccioná una modalidad válida.');
@@ -37,16 +41,17 @@ final class LogisticsService
         if($mode==='ENTREGA_DOMICILIO'&&$vehicleId<1) throw new LogisticsException('La entrega a domicilio requiere un vehículo.');
         if($mode==='EN_CORRALON') $vehicleId=0;
 
-        return OperationGuard::run($this->repository->db(), array_merge($input, ['_quantities'=>$quantities]), $actor, 'logistics.schedule', function() use($orderId,$warehouseId,$vehicleId,$mode,$destination,$notes,$date,$quantities,$actor): int {
+        return OperationGuard::run($this->repository->db(), array_merge($input, ['_quantities'=>$quantities]), $actor, 'logistics.schedule', function() use($orderId,$warehouseId,$vehicleId,$mode,$destination,$notes,$date,$quantities,$actor,$transport,$origin,$reserveAvailable): int {
             $order=$this->repository->lockOrder($orderId);if(!$order) throw new LogisticsException('El pedido indicado no existe.');
             if(in_array(mb_strtoupper((string)$order['estado']),['CANCELADO','CANCELADA','ANULADO','ANULADA'],true))throw new LogisticsException('No se puede despachar un pedido cancelado.');
+            $this->repository->requirePaidOrder($orderId);
             $warehouse=$this->repository->warehouse($warehouseId);
             if(!$warehouse) throw new LogisticsException('El depósito indicado no está disponible.');
             if($vehicleId>0){$vehicle=$this->repository->lockVehicle($vehicleId);if(!$vehicle||(int)$vehicle['activo']!==1||(string)$vehicle['estado']!=='DISPONIBLE') throw new LogisticsException('El vehículo ya no está disponible.');if($this->repository->vehicleHasScheduleConflict($vehicleId,$date->format('Y-m-d H:i:s')))throw new LogisticsException('El vehículo ya tiene un despacho programado en ese horario.');}
             if ((string)$order['modalidadOperativa'] !== 'ACOPIO' && (string)$order['modalidadOperativa'] !== $mode) throw new LogisticsException('La modalidad debe coincidir con el pedido.');
             $items=$this->repository->orderItems($orderId,true); $selected=[];
             foreach($items as $item){
-                $detailId=(int)$item['idDetalle']; $qty=$this->decimal($quantities[$detailId]??0);
+                $detailId=(int)$item['idDetalle']; $qty=$reserveAvailable ? max(0,round((float)$item['cantidadPendiente']-(float)$item['reservado'],3)) : $this->decimal($quantities[$detailId]??0);
                 if($qty<=0) continue;
                 if ((int)$item['productActive'] !== 1) throw new LogisticsException('El producto está dado de baja.');
                 $available=round((float)$item['cantidadPendiente']-(float)$item['reservado'],3);
@@ -55,9 +60,9 @@ final class LogisticsService
                 $selected[]=['detail'=>$detailId,'quantity'=>$qty];
             }
             if(!$selected) throw new LogisticsException('Indicá al menos una cantidad para despachar.');
-            $dispatchId=$this->repository->createDispatch(['order'=>$orderId,'warehouse'=>$warehouseId,'vehicle'=>$vehicleId?:null,'scheduled'=>$date->format('Y-m-d H:i:s'),'destination'=>$destination,'mode'=>$mode,'notes'=>$notes?:null,'actor'=>$actor?:null]);
+            $dispatchId=$this->repository->createDispatch(['order'=>$orderId,'warehouse'=>$warehouseId,'vehicle'=>$vehicleId?:null,'scheduled'=>$date->format('Y-m-d H:i:s'),'destination'=>$destination,'mode'=>$mode,'notes'=>$notes?:null,'actor'=>$actor?:null,'transport'=>$transport?:null]);
             foreach($selected as $item) $this->repository->addDispatchItem($dispatchId,$item['detail'],$item['quantity']);
-            $this->repository->createDocuments($dispatchId,(string)$warehouse['name']);
+            $this->repository->createDocuments($dispatchId,$origin!==''?$origin:(string)$warehouse['name']);
             $this->repository->addHistory($dispatchId,null,'EN_ESPERA','Despacho programado.',$actor);
             $this->repository->markOrderScheduled($orderId);
             return $dispatchId;
@@ -78,6 +83,7 @@ final class LogisticsService
             if(!in_array($newState,self::TRANSITIONS[$current]??[],true)) throw new LogisticsException('No se puede pasar de '.$this->stateLabel($current).' a '.$this->stateLabel($newState).'.');
             if (in_array($newState,['EN_PREPARACION','EN_RUTA'],true) && in_array((string)$dispatch['pedidoEstado'],['CANCELADO','CANCELADA','ANULADO','ANULADA'],true)) throw new LogisticsException('El pedido fue cancelado. No se puede iniciar el despacho.');
             if (in_array($newState,['EN_PREPARACION','EN_RUTA'],true) && !$this->repository->warehouse((int)$dispatch['idWarehouse'])) throw new LogisticsException('El depósito está inactivo.');
+            if (in_array($newState,['EN_PREPARACION','EN_RUTA'],true)) $this->repository->requirePaidOrder((int)$dispatch['idPedido']);
             $items=$this->repository->dispatchItems($dispatchId,true);
             if(!$items) throw new LogisticsException('El despacho no contiene productos.');
 

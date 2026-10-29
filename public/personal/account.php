@@ -64,7 +64,7 @@ PersonnelPage::begin($account ? 'Administrar acceso' : 'Crear cuenta', 'access',
     <section class="form-section">
         <div class="form-section-heading"><span>03</span><div><h3>Permisos por módulo</h3><p>Marcá únicamente los módulos que esta persona necesita utilizar.</p></div></div>
         <div class="permission-grid">
-            <?php foreach (['ventas'=>'Ventas y pedidos','clientes'=>'Clientes','inventario'=>'Inventario','proveedores'=>'Proveedores y compras','pagos'=>'Pagos y cobranzas','logistica'=>'Despacho y logística'] as $key => $label): ?>
+            <?php foreach (['ventas'=>'Ventas/pedidos-Clientes: Pedidos','clientes'=>'Ventas/pedidos-Clientes: Clientes','inventario'=>'Inventario','proveedores'=>'Proveedores y compras','pagos'=>'Pagos y cobranzas','logistica'=>'Despacho y logística'] as $key => $label): ?>
                 <label class="permission-option"><input type="checkbox" name="permissions[]" value="<?= e($key) ?>"><span><strong><?= e($label) ?></strong><small>Permitir acceso al módulo.</small></span></label>
             <?php endforeach; ?>
         </div>
@@ -88,7 +88,7 @@ PersonnelPage::begin($account ? 'Administrar acceso' : 'Crear cuenta', 'access',
     </section>
     <section class="form-section">
         <div class="form-section-heading"><span>03</span><div><h3>Permisos</h3><p>Los permisos se aplican además del perfil asociado al rol.</p></div></div>
-        <div class="permission-grid"><?php foreach (['ventas'=>'Ventas y pedidos','clientes'=>'Clientes','inventario'=>'Inventario','proveedores'=>'Proveedores y compras','pagos'=>'Pagos y cobranzas','logistica'=>'Despacho y logística'] as $key => $label): ?><label class="permission-option"><input type="checkbox" name="permissions[]" value="<?= e($key) ?>" <?= $hasModule($key) ? 'checked' : '' ?>><span><strong><?= e($label) ?></strong><small>Permitir acceso al módulo.</small></span></label><?php endforeach; ?></div>
+        <div class="permission-grid"><?php foreach (['ventas'=>'Ventas/pedidos-Clientes: Pedidos','clientes'=>'Ventas/pedidos-Clientes: Clientes','inventario'=>'Inventario','proveedores'=>'Proveedores y compras','pagos'=>'Pagos y cobranzas','logistica'=>'Despacho y logística'] as $key => $label): ?><label class="permission-option"><input type="checkbox" name="permissions[]" value="<?= e($key) ?>" <?= $hasModule($key) ? 'checked' : '' ?>><span><strong><?= e($label) ?></strong><small>Permitir acceso al módulo.</small></span></label><?php endforeach; ?></div>
         <label class="account-toggle"><input type="checkbox" name="enabled" value="1" <?= (int) $account['habilitado'] === 1 ? 'checked' : '' ?>><span><strong>Cuenta habilitada</strong><small>Si se desmarca, la persona no podrá iniciar sesión.</small></span></label>
     </section>
     <div class="form-footer"><a class="button button-secondary" href="access.php">Cancelar</a><button class="button button-primary" type="submit">Guardar acceso</button></div>

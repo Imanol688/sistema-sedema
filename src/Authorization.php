@@ -21,6 +21,7 @@ final class Authorization
     /** @param array<string,mixed> $user */
     public static function can(array $user, string $permission): bool
     {
+        if (in_array($permission, ['personal.access', 'personal.payroll'], true) && ($user['role'] ?? '') !== 'ADMINISTRADOR') return false;
         $assigned = is_array($user['permissions'] ?? null) ? $user['permissions'] : [];
         $rolePermissions = self::ROLE_PERMISSIONS[(string) ($user['role'] ?? '')] ?? [];
         $permissions = array_merge($rolePermissions, $assigned);

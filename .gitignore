@@ -1,7 +1,14 @@
 /.env
 /.env.*
 !/.env.example
-/storage/logs/*
+/storage/logs/*.log
 !/storage/logs/.gitkeep
 /public/uploads/profiles/*
 !/public/uploads/profiles/.htaccess
+!/public/uploads/profiles/.gitkeep
+/base-datos/
+/database/sedema_integrada.sql
+/database/sedema_db*.sql
+/equivalencias*.json
+*.zip
+*.rar

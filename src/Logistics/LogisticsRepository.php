@@ -65,6 +65,15 @@ final class LogisticsRepository
     public function vehicles(bool $onlyActive = true): array { return $this->db->query('SELECT * FROM vehiculo' . ($onlyActive?' WHERE activo=1':'') . ' ORDER BY matricula')->fetchAll(); }
     public function vehicle(int $id): ?array { $s=$this->db->prepare('SELECT * FROM vehiculo WHERE idVehiculo=?');$s->execute([$id]);$r=$s->fetch();return is_array($r)?$r:null; }
 
+    public function requirePaidOrder(int $id): void
+    {
+        $s = $this->db->prepare("SELECT p.total, COALESCE((SELECT SUM(pg.importe) FROM pago pg WHERE pg.idPedido=p.idPedido AND pg.estadoPago='APROBADO' AND pg.tipoOperacion='PAGO'),0) paid FROM pedido p WHERE p.idPedido=?");
+        $s->execute([$id]); $row = $s->fetch();
+        if (!$row || (float) $row['paid'] <= 0 || (float) $row['paid'] + 0.005 < (float) $row['total']) {
+            throw new LogisticsException('Completá el pago del pedido antes de programar o iniciar el despacho.');
+        }
+    }
+
     public function lockOrder(int $id): ?array { $s=$this->db->prepare('SELECT * FROM pedido WHERE idPedido=? FOR UPDATE'); $s->execute([$id]); $r=$s->fetch(); return is_array($r)?$r:null; }
     public function lockVehicle(int $id): ?array { $s=$this->db->prepare('SELECT * FROM vehiculo WHERE idVehiculo=? FOR UPDATE'); $s->execute([$id]); $r=$s->fetch(); return is_array($r)?$r:null; }
     public function vehicleHasScheduleConflict(int $id,string $scheduled,int $exclude=0): bool { $s=$this->db->prepare("SELECT 1 FROM despacho WHERE idVehiculo=? AND fechaHoraProgramada=? AND estado IN ('EN_ESPERA','EN_PREPARACION','EN_RUTA') AND idDespacho<>? LIMIT 1 FOR UPDATE");$s->execute([$id,$scheduled,$exclude]);return(bool)$s->fetchColumn(); }
@@ -73,11 +82,16 @@ final class LogisticsRepository
     /** @param array<string,mixed> $data */
     public function createDispatch(array $data): int
     {
-        $s=$this->db->prepare('INSERT INTO despacho (idPedido,idWarehouse,idVehiculo,fechaHoraProgramada,destino,modalidad,estado,observacionesEntrega,creadoPor) VALUES (:order,:warehouse,:vehicle,:scheduled,:destination,:mode,\'EN_ESPERA\',:notes,:actor)');
+        $s=$this->db->prepare('INSERT INTO despacho (idPedido,idWarehouse,idVehiculo,fechaHoraProgramada,destino,modalidad,estado,observacionesEntrega,creadoPor,transportista) VALUES (:order,:warehouse,:vehicle,:scheduled,:destination,:mode,\'EN_ESPERA\',:notes,:actor,:transport)');
         $s->execute($data); return (int)$this->db->lastInsertId();
     }
     public function addDispatchItem(int $dispatchId,int $detailId,float $quantity): void { $this->db->prepare('INSERT INTO itemdespacho (idDespacho,idDetallePedido,cantidadADespachar) VALUES (?,?,?)')->execute([$dispatchId,$detailId,$quantity]); }
-    public function createDocuments(int $dispatchId,string $branch): void { $code=str_pad((string)$dispatchId,8,'0',STR_PAD_LEFT); $this->db->prepare('INSERT INTO remitodespacho (idDespacho,numeroRemito,sucursalOrigen,hojaRuta) VALUES (?,?,?,?)')->execute([$dispatchId,'R-'.$code,$branch,'HR-'.$code]); }
+    public function createDocuments(int $dispatchId, string $branch): void
+    {
+        $number = 'R-' . strtoupper(bin2hex(random_bytes(8)));
+        $this->db->prepare('INSERT INTO remitodespacho(idDespacho,numeroRemito,sucursalOrigen,hojaRuta) VALUES(?,?,?,?)')
+            ->execute([$dispatchId,$number,$branch,'HR-'.$number]);
+    }
     public function addHistory(int $dispatchId,?string $from,string $to,?string $notes,int $actor): void { $this->db->prepare('INSERT INTO despacho_estado_historial (idDespacho,estadoAnterior,estadoNuevo,observaciones,idUsuario) VALUES (?,?,?,?,?)')->execute([$dispatchId,$from,$to,$notes?:null,$actor?:null]); }
     public function markOrderScheduled(int $orderId): void { $this->db->prepare("UPDATE pedido SET estado='DESPACHO_PROGRAMADO' WHERE idPedido=? AND estado NOT IN ('CANCELADO','FACTURADO')")->execute([$orderId]); }
 
