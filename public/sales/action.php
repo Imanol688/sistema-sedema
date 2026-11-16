@@ -22,7 +22,7 @@ try {
         case 'create-order':
             Authorization::require($user, 'sales.manage');
             $id = $service->createOrder($_POST, (int) $user['id']);
-            SalesPage::flash('success', 'Pedido #' . $id . ' creado correctamente.');
+            SalesPage::flash('success', 'Pedido #' . $id . (($_POST['saveMode'] ?? '') === 'pending' ? ' guardado como pendiente.' : ' creado correctamente.'));
             $target = 'order.php?id=' . $id;
             break;
         case 'cancel-order':

@@ -60,9 +60,14 @@ SalesPage::begin($order ? 'Pedido #' . $id : 'Nuevo pedido', 'orders', $user);
         <div class="field"><label>Descuento comercial %</label><input type="number" min="0" max="100" step="0.01" name="discountPercent" value="0"></div>
         <div class="field"><label>Descuento por volumen %</label><input type="number" min="0" max="100" step="0.01" name="volumeDiscountPercent" value="0"></div>
         <div class="field"><label>Recargo tarjeta %</label><input type="number" min="0" max="100" step="0.01" name="cardSurchargePercent" value="0"></div>
-        <div class="field"><label>Tipo de tarjeta</label><input name="tipoTarjeta" maxlength="50" placeholder="Visa, Mastercard, etc."></div>
+        <div class="field"><label for="cardType">Tipo de tarjeta</label><select id="cardType" name="tipoTarjeta">
+            <option value="">Seleccionar</option>
+            <?php foreach (SalesService::CARD_TYPES as $type): ?>
+                <option value="<?= e($type) ?>"><?= e($type) ?></option>
+            <?php endforeach; ?>
+        </select></div>
     </div>
-    <div class="form-actions"><button class="button button-primary" type="submit">Confirmar pedido</button></div>
+    <div class="form-actions"><button class="button button-primary" type="submit">Confirmar pedido</button> <button class="button button-secondary" type="submit" name="saveMode" value="pending">Guardar pendiente</button></div>
 </form>
 <?php else: ?>
 <section class="inventory-stats">
@@ -79,7 +84,7 @@ SalesPage::begin($order ? 'Pedido #' . $id : 'Nuevo pedido', 'orders', $user);
 </section>
 
 <?php if (Authorization::can($user, 'payments.view') && (string) $order['estado'] !== 'CANCELADO'): ?>
-<div class="form-actions"><a class="button button-primary" href="../payments/collect.php?id=<?= $id ?>">Continuar a Pagos y cobranzas</a></div>
+<div class="form-actions"><?php if ($order['estado'] === 'PENDIENTE' && Authorization::can($user, 'payments.manage') && !$repository->correctionBlockedReason($id)): ?><a class="button button-secondary" href="../payments/edit-order.php?id=<?= $id ?>">Retomar pedido</a><?php endif; ?><a class="button button-primary" href="../payments/collect.php?id=<?= $id ?>">Continuar a Pagos y cobranzas</a></div>
 <?php endif; ?>
 
 <?php if (Authorization::can($user, 'sales.manage') && !in_array((string) $order['estado'], ['FACTURADO', 'CANCELADO'], true)): ?>

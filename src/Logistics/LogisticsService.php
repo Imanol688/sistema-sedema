@@ -6,6 +6,7 @@ namespace Sedema\Logistics;
 use DateTimeImmutable;
 use PDOException;
 use Sedema\Inventory\OperationGuard;
+use Sedema\Inventory\StockReservation;
 
 final class LogisticsService
 {
@@ -87,7 +88,7 @@ final class LogisticsService
             $items=$this->repository->dispatchItems($dispatchId,true);
             if(!$items) throw new LogisticsException('El despacho no contiene productos.');
 
-            if(in_array($newState,['EN_PREPARACION','EN_RUTA'],true)) $this->validateStock($items,(int)$dispatch['idWarehouse']);
+            if(in_array($newState,['EN_PREPARACION','EN_RUTA'],true)) $this->validateStock($items,(int)$dispatch['idWarehouse'],(int)$dispatch['idPedido']);
             if($newState==='EN_RUTA'){
                 if((string)$dispatch['modalidad']==='ENTREGA_DOMICILIO'){
                     $vehicleId=(int)($dispatch['idVehiculo']??0); if($vehicleId<1) throw new LogisticsException('La entrega no tiene vehículo asignado.');
@@ -179,11 +180,11 @@ final class LogisticsService
     }
 
     /** @param list<array<string,mixed>> $items */
-    private function validateStock(array $items,int $warehouseId): void
+    private function validateStock(array $items,int $warehouseId,int $orderId): void
     {
         $required=[];$names=[];
         foreach($items as $item){$product=(int)$item['idProducto'];$required[$product]=($required[$product]??0)+(float)$item['cantidadADespachar'];$names[$product]=(string)$item['productName'];}
-        foreach($required as $product=>$qty){$stock=$this->repository->stockForUpdate($product,$warehouseId);if(!$stock||(int)$stock['productActive']!==1||(float)$stock['quantity']+0.0001<$qty) throw new LogisticsException('Stock insuficiente para '.$names[$product].'. Requerido: '.$this->quantity($qty).'.');}
+        foreach($required as $product=>$qty){$stock=$this->repository->stockForUpdate($product,$warehouseId);if(!$stock||(int)$stock['productActive']!==1||round((float)$stock['quantity'] - StockReservation::lockedQuantity($this->repository->db(), $product, $warehouseId, $orderId), 3)<$qty) throw new LogisticsException('Stock insuficiente para '.$names[$product].'. Requerido: '.$this->quantity($qty).'.');}
     }
 
     /** @param array<string,mixed> $input */

@@ -19,7 +19,7 @@ if ($reason) { PaymentPage::flash('error', $reason); redirect('collect.php?id=' 
 $version = $repository->correctionVersion($id);
 $warehouses = $repository->warehouses();
 $warehouseId = max(0, (int) ($_GET['warehouse'] ?? $order['idWarehouse']));
-$products = $repository->products($warehouseId);
+$products = $repository->products($warehouseId, $id);
 $clients = $repository->clients();
 $selectedClientId = (int) $order['idCliente'];
 $quantities = [];
@@ -63,10 +63,16 @@ PaymentPage::begin('Modificar pedido #' . $id, 'payments', $user);
         <div class="field"><label>Descuento comercial %</label><input type="number" min="0" max="100" step="0.01" name="discountPercent" value="<?= e((string) $discountPercent) ?>"></div>
         <div class="field"><label>Descuento por volumen %</label><input type="number" min="0" max="100" step="0.01" name="volumeDiscountPercent" value="<?= e((string) $volumeDiscountPercent) ?>"></div>
         <div class="field"><label>Recargo tarjeta %</label><input type="number" min="0" max="100" step="0.01" name="cardSurchargePercent" value="<?= e((string) $cardSurchargePercent) ?>"></div>
-        <div class="field"><label>Tipo de tarjeta</label><input name="tipoTarjeta" value="<?= e($cardType) ?>" maxlength="50" placeholder="Visa, Mastercard, etc."></div>
+        <div class="field"><label for="cardType">Tipo de tarjeta</label><select id="cardType" name="tipoTarjeta">
+            <option value="">Seleccionar</option>
+            <?php foreach (array_unique(array_merge(SalesService::CARD_TYPES, $cardType === '' ? [] : [$cardType])) as $type): ?>
+                <option value="<?= e($type) ?>" <?= $cardType === $type ? 'selected' : '' ?>><?= e($type) ?></option>
+            <?php endforeach; ?>
+        </select></div>
     </div>
     <section class="form-section"><h3>Revisión de artículos originales</h3><p>Si algún producto original ya no está activo o pertenece al catálogo histórico, no aparecerá en la selección y se quitará al guardar. Revisá este listado antes de confirmar.</p><ul><?php foreach ($originalItems as $original): ?><li><?= e((string) ($original['name'] ?? $original['descripcion'])) ?>: <?= number_format((float) $original['cantidadSolicitada'], 3, ',', '.') ?></li><?php endforeach; ?></ul><label><input type="checkbox" name="confirmRemovedItems" value="1"> Confirmo quitar los artículos originales que quedaron sin cantidad en la selección.</label></section>
-    <div class="form-actions"><button class="button button-primary" type="submit">Guardar cambios del pedido</button></div>
+    <div class="form-actions"><button class="button button-primary" type="submit">Guardar cambios del pedido</button>
+        <?php if ($order['estado'] === 'PENDIENTE'): ?><button class="button button-secondary" type="submit" name="saveMode" value="confirm">Confirmar pedido</button><?php endif; ?></div>
 </form>
 
 <script src="../assets/js/payment-orders.js" defer></script>

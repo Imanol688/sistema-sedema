@@ -132,8 +132,8 @@ final class InventoryService
             if ($resulting > 99999999999.999) {
                 throw new InventoryException('La existencia resultante supera el máximo permitido.');
             }
-            if ($resulting < 0) {
-                throw new InventoryException('La operación dejaría el stock en negativo. Disponible: ' . $this->formatQuantity($previous) . ' ' . $stock['symbol'] . '.');
+            if (!$positive && $resulting < StockReservation::lockedQuantity($this->repository->db(), $productId, $warehouseId)) {
+                throw new InventoryException('La operación supera el stock libre de reservas. Existencia física: ' . $this->formatQuantity($previous) . ' ' . $stock['symbol'] . '.');
             }
 
             $this->repository->updateQuantity($productId, $warehouseId, $resulting);
@@ -189,7 +189,7 @@ final class InventoryService
             if ($targetResult > 99999999999.999) {
                 throw new InventoryException('El depósito de destino supera el máximo permitido.');
             }
-            if ($sourceResult < 0) {
+            if ($sourceResult < StockReservation::lockedQuantity($this->repository->db(), $productId, $from)) {
                 throw new InventoryException('El depósito de origen no tiene stock suficiente.');
             }
 

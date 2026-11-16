@@ -3,12 +3,14 @@ declare(strict_types=1);
 namespace Sedema\Sales;
 
 use PDO;
+use Sedema\Inventory\StockReservation;
 use PDOException;
 use Throwable;
 
 final class SalesService
 {
     public const MODALITIES=['EN_CORRALON','ENTREGA_DOMICILIO','ACOPIO'];
+    public const CARD_TYPES = ['Visa', 'Mastercard', 'American Express', 'Cabal', 'Naranja X', 'Otra'];
     public const STATUSES=['PENDIENTE','CONFIRMADO','DESPACHO_PROGRAMADO','FACTURADO','CANCELADO'];
     public function __construct(private readonly SalesRepository $repo) {}
 
@@ -20,13 +22,20 @@ final class SalesService
         $modality=(string)($input['modalidadOperativa']??''); if(!in_array($modality,self::MODALITIES,true)) throw new SalesException('Seleccioná una modalidad operativa válida.');
         if($warehouseId<=0 || !array_filter($this->repo->warehouses(), fn($w)=>(int)$w['idWarehouse']===$warehouseId)) throw new SalesException('Seleccioná el depósito de origen.');
         $quantities=is_array($input['quantity']??null)?$input['quantity']:[];$items=[];$subtotal=0.0;
-        foreach($quantities as $productIdRaw=>$qtyRaw){$productId=(int)$productIdRaw;$qty=(float)str_replace(',','.',(string)$qtyRaw);if($qty<=0)continue;$product=$this->repo->product($productId,$warehouseId);if(!$product)throw new SalesException('Uno de los productos seleccionados ya no está disponible.');if (!is_finite($qty) || $qty > 99999999999.999 || abs($qty-round($qty,3))>0.00001 || (!(int)$product['allowsDecimals'] && abs($qty-round($qty))>0.00001)) throw new SalesException('Cantidad inválida para la unidad del artículo.');if($qty>(float)$product['quantity'])throw new SalesException('Stock insuficiente para '.$product['name'].'. Disponible: '.$product['quantity'].' '.$product['symbol'].'.');$price=(float)$product['salePrice'];$sub=round($qty*$price,2);$subtotal+=$sub;$items[]=['id'=>$productId,'qty'=>$qty,'price'=>$price,'subtotal'=>$sub,'name'=>$product['name']];}
+        foreach($quantities as $productIdRaw=>$qtyRaw){$productId=(int)$productIdRaw;if ($productId <= 0 || (string) $productId !== (string) $productIdRaw) throw new SalesException('Producto inválido.');$qty=(float)str_replace(',','.',(string)$qtyRaw);if($qty<=0)continue;$product=$this->repo->product($productId,$warehouseId);if(!$product)throw new SalesException('Uno de los productos seleccionados ya no está disponible.');if (!is_finite($qty) || $qty > 99999999999.999 || abs($qty-round($qty,3))>0.00001 || (!(int)$product['allowsDecimals'] && abs($qty-round($qty))>0.00001)) throw new SalesException('Cantidad inválida para la unidad del artículo.');$price=(float)$product['salePrice'];$sub=round($qty*$price,2);$subtotal+=$sub;$items[]=['id'=>$productId,'qty'=>$qty,'price'=>$price,'subtotal'=>$sub,'name'=>$product['name']];}
         if(!$items) throw new SalesException('Agregá al menos un artículo al pedido.');
         $discount=max(0,min(100,(float)str_replace(',','.',(string)($input['discountPercent']??0))));
         $volume=max(0,min(100,(float)str_replace(',','.',(string)($input['volumeDiscountPercent']??0))));
         $surcharge=max(0,min(100,(float)str_replace(',','.',(string)($input['cardSurchargePercent']??0))));
+        $cardType = trim((string) ($input['tipoTarjeta'] ?? ''));
+        if ($cardType !== '' && !in_array($cardType, self::CARD_TYPES, true)) {
+            $historical = $existingOrderId > 0 ? array_column($this->repo->adjustments($existingOrderId), 'tipoTarjeta') : [];
+            if (!in_array($cardType, $historical, true)) throw new SalesException('Seleccioná un tipo de tarjeta válido.');
+        }
+        if ($surcharge > 0 && $cardType === '') throw new SalesException('Seleccioná el tipo de tarjeta para el recargo.');
+        $status = ($input['saveMode'] ?? '') === 'pending' ? 'PENDIENTE' : 'CONFIRMADO';
         $adjustments=[];$signed=0.0;
-        foreach([['DESCUENTO','Descuento comercial',$discount,-1],['DESCUENTO_VOLUMEN','Descuento por volumen',$volume,-1],['RECARGO_TARJETA','Recargo por financiación con tarjeta',$surcharge,1]] as [$type,$desc,$pct,$sign]){if($pct>0){$amount=round($subtotal*$pct/100,2);$signed+=$sign*$amount;$adjustments[]=[$type,$desc,$pct,$amount,(string)($input['tipoTarjeta']??'')];}}
+        foreach([['DESCUENTO','Descuento comercial',$discount,-1],['DESCUENTO_VOLUMEN','Descuento por volumen',$volume,-1],['RECARGO_TARJETA','Recargo por financiación con tarjeta',$surcharge,1]] as [$type,$desc,$pct,$sign]){if($pct>0){$amount=round($subtotal*$pct/100,2);$signed+=$sign*$amount;$adjustments[]=[$type,$desc,$pct,$amount,$cardType];}}
         $total=max(0,round($subtotal+$signed,2));
         $address=trim((string)($input['direccionEntrega']??'')); if($modality==='ENTREGA_DOMICILIO'&&$address==='')$address=(string)$client['direccion'];
         $delivery=trim((string)($input['fechaEntrega']??''));$delivery=$delivery!==''?str_replace('T',' ',$delivery).(strlen($delivery)<=16?':00':''):null;
@@ -35,6 +44,18 @@ final class SalesService
         try{
             if ($existingOrderId > 0) {
                 $this->repo->lockOrder($existingOrderId);
+            }
+            usort($items, static fn ($left, $right) => $left['id'] <=> $right['id']);
+            $stock = $db->prepare('SELECT quantity FROM inventory_stock WHERE idProduct=? AND idWarehouse=? FOR UPDATE');
+            foreach ($items as $item) {
+                $stock->execute([$item['id'], $warehouseId]);
+                $physical = $stock->fetchColumn();
+                $available = round((float) $physical - StockReservation::lockedQuantity($db, $item['id'], $warehouseId, $existingOrderId), 3);
+                if ($item['qty'] > $available) {
+                    throw new SalesException('Stock disponible insuficiente para ' . $item['name'] . '.');
+                }
+            }
+            if ($existingOrderId > 0) {
                 $reason = $this->repo->correctionBlockedReason($existingOrderId);
                 if ($reason) throw new SalesException($reason);
                 if (!hash_equals($this->repo->correctionVersion($existingOrderId), (string) ($input['orderVersion'] ?? ''))) {
@@ -47,13 +68,14 @@ final class SalesService
                     }
                 }
                 $id = $existingOrderId;
-                $s = $db->prepare('UPDATE pedido SET idCliente=?,idWarehouse=?,porcentajeDescuento=?,subtotal=?,totalAjustes=?,total=?,modalidadOperativa=?,direccionEntrega=?,fechaEntrega=?,observaciones=? WHERE idPedido=?');
-                $s->execute([$clientId,$warehouseId,$discount+$volume,$subtotal,$signed,$total,$modality,$address?:null,$delivery,$obs?:null,$id]);
+                $s = $db->prepare('UPDATE pedido SET idCliente=?,idWarehouse=?,estado=?,porcentajeDescuento=?,subtotal=?,totalAjustes=?,total=?,modalidadOperativa=?,direccionEntrega=?,fechaEntrega=?,observaciones=? WHERE idPedido=?');
+                $status = array_key_exists('saveMode', $input) ? $status : $this->repo->order($id)['estado'];
+                $s->execute([$clientId,$warehouseId,$status,$discount+$volume,$subtotal,$signed,$total,$modality,$address?:null,$delivery,$obs?:null,$id]);
                 $db->prepare('DELETE FROM ajuste WHERE idPedido=?')->execute([$id]);
                 $db->prepare('DELETE FROM detallepedido WHERE idPedido=?')->execute([$id]);
             } else {
-            $s=$db->prepare("INSERT INTO pedido(idCliente,idUsuario,idWarehouse,fecha,estado,porcentajeDescuento,subtotal,totalAjustes,total,modalidadOperativa,direccionEntrega,fechaEntrega,observaciones) VALUES(?,?,?,NOW(),'CONFIRMADO',?,?,?,?,?,?,?,?)");
-            $s->execute([$clientId,$actorUserId,$warehouseId,$discount+$volume,$subtotal,$signed,$total,$modality,$address?:null,$delivery,$obs?:null]);$id=(int)$db->lastInsertId();
+            $s=$db->prepare("INSERT INTO pedido(idCliente,idUsuario,idWarehouse,fecha,estado,porcentajeDescuento,subtotal,totalAjustes,total,modalidadOperativa,direccionEntrega,fechaEntrega,observaciones) VALUES(?,?,?,NOW(),?,?,?,?,?,?,?,?,?)");
+            $s->execute([$clientId,$actorUserId,$warehouseId,$status,$discount+$volume,$subtotal,$signed,$total,$modality,$address?:null,$delivery,$obs?:null]);$id=(int)$db->lastInsertId();
             }
             $di=$db->prepare('INSERT INTO detallepedido(idPedido,idProducto,idInventoryProduct,descripcion,observaciones,cantidadSolicitada,cantidadPendiente,precioUnitario,subtotal) VALUES(?,NULL,?,?,?,?,?,?,?)');
             foreach($items as $it){$di->execute([$id,$it['id'],$it['name'],null,$it['qty'],$it['qty'],$it['price'],$it['subtotal']]);}

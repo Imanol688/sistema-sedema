@@ -15,14 +15,14 @@
   --success: #147a49;
   --success-bg: #eaf8f1;
   --shadow: 0 24px 70px rgba(12, 24, 49, .16);
-  --font-display: "Bahnschrift Condensed", "Arial Narrow", Impact, sans-serif;
-  --font-body: "Bahnschrift", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: Arial, Helvetica, sans-serif;
+  --font-body: Arial, Helvetica, sans-serif;
 }
 
 * { box-sizing: border-box; }
-html { font-family: var(--font-body); color: var(--ink); background: var(--canvas); }
+html { font-size: 93.75%; font-family: var(--font-body); color: var(--ink); background: var(--canvas); }
 body { margin: 0; min-width: 320px; }
-button, input { font: inherit; }
+button, input, select, textarea { font: inherit; }
 a { color: var(--navy-2); text-underline-offset: 3px; }
 a:hover { color: var(--accent-dark); }
 
@@ -39,7 +39,7 @@ a:hover { color: var(--accent-dark); }
 .system-label { padding: 8px 12px; border: 1px solid rgba(255,255,255,.25); color: #f3f4f6; font-family: var(--font-display); font-size: .82rem; letter-spacing: .11em; text-transform: uppercase; }
 .brand-copy { max-width: 660px; margin-block: auto; padding-block: 64px; }
 .eyebrow { margin: 0 0 16px; color: var(--accent); font-family: var(--font-display); font-size: .92rem; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
-.brand-copy h1 { max-width: 620px; margin: 0; font-family: var(--font-display); font-size: clamp(3rem, 5.8vw, 6.2rem); font-stretch: condensed; line-height: .88; letter-spacing: -.035em; text-transform: uppercase; }
+.brand-copy h1 { max-width: 620px; margin: 0; font-family: var(--font-display); font-size: clamp(2.3rem, 4vw, 4.25rem); font-stretch: condensed; line-height: .88; letter-spacing: -.035em; text-transform: uppercase; }
 .brand-copy > p:last-child { max-width: 480px; margin: 28px 0 0; color: #c7d4df; font-size: 1.05rem; line-height: 1.65; }
 .brand-footer { display: flex; align-items: center; gap: 10px; color: #b9c7d3; font-size: .86rem; }
 .brand-footer span { width: 8px; height: 8px; border-radius: 50%; background: #4dd394; box-shadow: 0 0 0 5px rgba(77,211,148,.12); }
@@ -47,7 +47,7 @@ a:hover { color: var(--accent-dark); }
 .form-panel { position: relative; display: grid; place-items: center; padding: 48px clamp(28px, 7vw, 110px); background: #fbfcfd; }
 .form-panel::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: var(--accent); }
 .form-wrap { width: min(100%, 470px); }
-.form-header h2, .simple-card h1 { margin: 0; font-family: var(--font-display); font-size: clamp(2.6rem, 5vw, 3.8rem); line-height: .95; letter-spacing: -.025em; text-transform: uppercase; }
+.form-header h2, .simple-card h1 { margin: 0; font-family: var(--font-display); font-size: clamp(1.9rem, 3.5vw, 2.7rem); line-height: .95; letter-spacing: -.025em; text-transform: uppercase; }
 .form-header > p:last-child, .muted { margin: 12px 0 0; color: var(--steel); line-height: 1.55; }
 .mobile-brand { display: none; color: var(--navy); font-family: var(--font-display); font-size: 1.55rem; font-weight: 900; letter-spacing: .07em; line-height: 1; text-transform: uppercase; }
 .mobile-brand span { color: var(--accent); font-size: .58em; vertical-align: .2em; }

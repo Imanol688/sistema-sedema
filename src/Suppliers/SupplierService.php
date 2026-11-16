@@ -23,7 +23,12 @@ final class SupplierService
         $description = trim((string)($input['descripcionProveedor'] ?? ''));
         $contact = trim((string)($input['contacto'] ?? ''));
         if ($id < 0 || ($id && !$this->repo->supplier($id))) throw new SupplierException('Proveedor inexistente.');
-        if ($name === '' || mb_strlen($name)>150 || !preg_match('/^\d{11}$/D', $cuit)) throw new SupplierException('Ingresá razón social y CUIT de 11 dígitos.');
+        if ($name === '' || mb_strlen($name) > 150) {
+            throw new SupplierException('Ingresá una razón social de hasta 150 caracteres.');
+        }
+        if (!preg_match('/^[0-9]{11}$/D', $cuit)) {
+            throw new SupplierException('Ingresá un CUIT de 11 dígitos. Podés usar guiones.');
+        }
         if (mb_strlen($description)>5000 || mb_strlen($contact)>100) throw new SupplierException('La descripción o el contacto son demasiado largos.');
         try { return $this->repo->saveSupplier($id,$name,$cuit,$description ?: null,$contact ?: null); }
         catch (PDOException $e) { if ((string)$e->getCode()==='23000') throw new SupplierException('El CUIT ya está registrado.'); throw $e; }

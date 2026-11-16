@@ -3,6 +3,7 @@ declare(strict_types=1);
 namespace Sedema\Sales;
 
 use PDO;
+use Sedema\Inventory\StockReservation;
 
 final class SalesRepository
 {
@@ -22,10 +23,11 @@ final class SalesRepository
     }
 
     /** @return list<array<string,mixed>> */
-    public function products(int $warehouseId): array
+    public function products(int $warehouseId, int $exceptOrder = 0): array
     {
-        $st=$this->db->prepare("SELECT p.idProduct,p.code,p.name,p.salePrice,u.symbol,COALESCE(s.quantity,0) quantity FROM inventory_product p INNER JOIN inventory_unit u ON u.idUnit=p.idUnit LEFT JOIN inventory_stock s ON s.idProduct=p.idProduct AND s.idWarehouse=? WHERE p.active=1 ORDER BY p.name");
-        $st->execute([$warehouseId]); return $st->fetchAll();
+        $available = StockReservation::catalogExpression();
+        $st=$this->db->prepare("SELECT p.idProduct,p.code,p.name,p.salePrice,u.symbol,{$available} quantity FROM inventory_product p INNER JOIN inventory_unit u ON u.idUnit=p.idUnit LEFT JOIN inventory_stock s ON s.idProduct=p.idProduct AND s.idWarehouse=? WHERE p.active=1 ORDER BY p.name");
+        $st->execute([$exceptOrder, $warehouseId]); return $st->fetchAll();
     }
 
     /** @return array<string,mixed>|null */

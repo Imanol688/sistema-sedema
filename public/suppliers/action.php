@@ -33,6 +33,9 @@ try {
     Csrf::rotate();
 } catch (SupplierException $e) {
     SupplierPage::flash('error',$e->getMessage());
+    if ($action === 'supplier') {
+        $_SESSION['supplierForm'] = array_intersect_key($_POST, array_flip(['idProveedor', 'razonSocial', 'cuit', 'contacto', 'descripcionProveedor']));
+    }
     if ($action==='supplier') $target='supplier.php'.((int)($_POST['idProveedor']??0)>0?'?id='.(int)$_POST['idProveedor']:'');
     elseif ($action==='order') $target='order.php';
     elseif (in_array($action,['receive','cancel'],true)) $target='detail.php?id='.(int)($_POST['idRemitoProveedor']??0);
