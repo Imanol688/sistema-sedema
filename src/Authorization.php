@@ -8,7 +8,7 @@ final class Authorization
     /** @var array<string, list<string>> */
     private const ROLE_PERMISSIONS = [
         'ADMINISTRADOR' => ['*'],
-        'VENDEDOR' => ['inventory.view', 'clientes.view', 'clientes.manage', 'sales.view', 'sales.manage', 'sales.remit', 'payments.view', 'payments.manage'],
+        'VENDEDOR' => ['inventory.view', 'clientes.view', 'sales.view', 'sales.manage', 'sales.remit', 'payments.view', 'payments.manage'],
         'PROVEEDOR' => ['inventory.view', 'suppliers.view', 'suppliers.manage', 'suppliers.receive'],
         'DEPOSITO' => ['suppliers.view', 'suppliers.receive', 'inventory.view', 'inventory.manage', 'inventory.adjust', 'inventory.catalogs', 'logistics.view', 'logistics.dispatch'],
         'LOGISTICA' => ['inventory.view', 'sales.view', 'sales.remit', 'logistics.view', 'logistics.manage', 'logistics.dispatch'],
@@ -22,6 +22,10 @@ final class Authorization
     public static function can(array $user, string $permission): bool
     {
         if (in_array($permission, ['personal.access', 'personal.payroll'], true) && ($user['role'] ?? '') !== 'ADMINISTRADOR') return false;
+        if (($user['role'] ?? '') === 'VENDEDOR' && $permission === 'clientes.manage') {
+            return false;
+        }
+
         $assigned = is_array($user['permissions'] ?? null) ? $user['permissions'] : [];
         $rolePermissions = self::ROLE_PERMISSIONS[(string) ($user['role'] ?? '')] ?? [];
         $permissions = array_merge($rolePermissions, $assigned);
