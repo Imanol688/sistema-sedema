@@ -86,12 +86,35 @@ final class SalesRepository
         return (float) $s->fetchColumn();
     }
 
+    public const BLOCKING_PAYMENT = "cp.estadoPago <> 'RECHAZADO'
+        OR (cp.medioPago = 'MERCADO_PAGO_QR' AND NOT EXISTS (
+            SELECT 1 FROM mp_qr_order qr WHERE qr.idPago = cp.idPago
+            AND ((qr.externalOrderId IS NOT NULL AND qr.checkedAt IS NOT NULL AND qr.status IN ('canceled','expired','failed'))
+                OR (qr.externalOrderId IS NULL AND qr.status = 'validation_rejected'))
+        ))
+        OR EXISTS (
+            SELECT 1 FROM payment_audit pa WHERE pa.idPago = cp.idPago
+            AND pa.eventType IN ('PAYMENT_APPROVED','CHECK_APPROVED','MP_QR_APPROVED','MP_QR_REFUNDED')
+        )";
+
+    public function hasPaymentAttempts(int $id): bool
+    {
+        $statement = $this->db->prepare('SELECT 1 FROM pago WHERE idPedido=? LIMIT 1');
+        $statement->execute([$id]);
+        return (bool) $statement->fetchColumn();
+    }
+
     public function correctionBlockedReason(int $id): ?string
     {
         $order = $this->order($id);
         if (!$order) return 'El pedido no existe.';
         if (!in_array((string) $order['estado'], ['CONFIRMADO', 'PENDIENTE'], true)) return 'El estado actual del pedido no permite modificarlo o eliminarlo.';
-        foreach (['pago', 'despacho', 'factura', 'current_account_movement'] as $table) {
+        $payments = $this->db->prepare('SELECT 1 FROM pago cp WHERE cp.idPedido=? AND (' . self::BLOCKING_PAYMENT . ') LIMIT 1');
+        $payments->execute([$id]);
+        if ($payments->fetchColumn()) {
+            return 'El pedido tiene un cobro acreditado o sin cierre confirmado. Verificá el cobro y, si sigue pendiente, resolvelo desde su ficha.';
+        }
+        foreach (['despacho', 'factura', 'current_account_movement'] as $table) {
             $s = $this->db->prepare('SELECT COUNT(*) FROM ' . $table . ' WHERE idPedido=?');
             $s->execute([$id]);
             if ((int) $s->fetchColumn() > 0) return 'El pedido ya tiene cobros, cuenta corriente, despachos o comprobantes asociados.';

@@ -1,6 +1,6 @@
 -- SEDEMA INTEGRACION 3.0-rc1 | INSTALACION LIMPIA EXCLUSIVAMENTE.
 -- Base: estructura de sedema_db(1).sql; sin usuarios ni operaciones de prueba.
--- Requiere una base sedema_db vacia. No ejecutar en una instalacion existente.
+-- Requiere una base sedema_integrada vacia. No ejecutar en una instalacion existente.
 -- El DDL no es transaccional; ante error detenerse y revisar, no usar --force.
 CREATE DATABASE IF NOT EXISTS sedema_integrada CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE sedema_integrada;

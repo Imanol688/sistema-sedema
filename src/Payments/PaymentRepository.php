@@ -23,7 +23,7 @@ final class PaymentRepository
         elseif($status==='paid')$having=' HAVING saldo <= 0.004';
         $sql="SELECT pe.idPedido,pe.fecha,pe.estado,pe.total,pe.modalidadOperativa,c.idCliente,c.nombre,c.apellido,c.cuitDNI,c.tipoCliente,
             (pe.estado IN ('CONFIRMADO','PENDIENTE')
-             AND NOT EXISTS (SELECT 1 FROM pago cp WHERE cp.idPedido=pe.idPedido)
+             AND NOT EXISTS (SELECT 1 FROM pago cp WHERE cp.idPedido=pe.idPedido AND (".\Sedema\Sales\SalesRepository::BLOCKING_PAYMENT."))
              AND NOT EXISTS (SELECT 1 FROM despacho cd WHERE cd.idPedido=pe.idPedido)
              AND NOT EXISTS (SELECT 1 FROM factura cf WHERE cf.idPedido=pe.idPedido)
              AND NOT EXISTS (SELECT 1 FROM current_account_movement cm WHERE cm.idPedido=pe.idPedido)) canCorrect,

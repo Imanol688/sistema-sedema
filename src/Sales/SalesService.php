@@ -85,7 +85,7 @@ final class SalesService
         }catch(Throwable $e){if($db->inTransaction())$db->rollBack();throw $e;}
     }
 
-    public function deleteOrder(int $id, string $version, int $actor): void
+    public function deleteOrder(int $id, string $version, int $actor): bool
     {
         $db = $this->repo->db();
         $db->beginTransaction();
@@ -95,11 +95,18 @@ final class SalesService
             if ($reason) throw new SalesException($reason);
             if (!hash_equals($this->repo->correctionVersion($id), $version)) throw new SalesException('El pedido cambió. Revisalo antes de eliminar.');
             $order = $this->repo->order($id);
+            if ($this->repo->hasPaymentAttempts($id)) {
+                $db->prepare("UPDATE pedido SET estado='CANCELADO' WHERE idPedido=?")->execute([$id]);
+                $this->repo->audit($id, $actor, 'ORDER_REMOVED', 'Retirado del circuito activo. Se conservan el pedido y sus intentos de cobro.');
+                $db->commit();
+                return false;
+            }
             $this->repo->audit($id, $actor, 'ORDER_DELETED', 'Pedido eliminado sin operaciones asociadas. Total $' . number_format((float) $order['total'], 2, '.', ''));
             $db->prepare('DELETE FROM ajuste WHERE idPedido=?')->execute([$id]);
             $db->prepare('DELETE FROM detallepedido WHERE idPedido=?')->execute([$id]);
             $db->prepare('DELETE FROM pedido WHERE idPedido=?')->execute([$id]);
             $db->commit();
+            return true;
         } catch (Throwable $e) {
             if ($db->inTransaction()) $db->rollBack();
             throw $e;
@@ -114,7 +121,7 @@ final class SalesService
             $this->repo->lockOrder($id);
             if ($reason = $this->repo->correctionBlockedReason($id)) throw new SalesException($reason);
             $db->prepare("UPDATE pedido SET estado='CANCELADO' WHERE idPedido=?")->execute([$id]);
-            $this->repo->audit($id, $actor, 'ORDER_CANCELLED', 'Pedido cancelado sin operaciones asociadas');
+            $this->repo->audit($id, $actor, 'ORDER_CANCELLED', 'Pedido cancelado sin cobros acreditados ni operaciones activas');
             $db->commit();
         } catch (Throwable $error) {
             if ($db->inTransaction()) $db->rollBack();

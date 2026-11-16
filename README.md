@@ -115,8 +115,12 @@ Las copias operativas entregadas por separado no forman parte de Git. Antes de f
 - La salida a ruta descuenta stock y pendiente dentro de una transacción. Cancelar una programación libera su reserva; devolver un despacho repone las cantidades.
 - Los formularios de cobro y las operaciones protegidas reconocen reenvíos mediante claves duraderas. Los despachos rechazan formularios desactualizados.
 - Una imputación a cuenta corriente representa deuda. El cobro aprobado acredita la cuenta y una devolución QR verificada revierte el crédito correspondiente.
-- Los pedidos con operaciones asociadas no se corrigen, eliminan ni cancelan mediante el circuito de pedidos sin operaciones. La auditoría de eliminación se conserva.
+- Los pedidos impagos con intentos rechazados y cierre confirmado se pueden corregir o retirar. Al retirarlos se conservan los intentos de cobro y se libera la reserva. Los cobros abiertos, las acreditaciones y las demás operaciones asociadas impiden la corrección.
 - El Administrador gestiona accesos y genera liquidaciones. Las fotos y el primer acceso mantienen sus flujos existentes.
+
+## Instalación en hosting
+
+Seguí la [guía de despliegue y pruebas en alwaysdata](docs/HOSTING.md). Incluye la generación del SQL para un esquema asignado, la configuración HTTPS y el alta por SSH.
 
 ## Configuración de pagos
 

@@ -26,8 +26,8 @@ try{
             Authorization::require($user, 'payments.manage');
             $orderId = max(0, (int) ($_POST['idPedido'] ?? 0));
             $orders = new SalesService(new SalesRepository(Database::connection()));
-            $orders->deleteOrder($orderId, (string) ($_POST['orderVersion'] ?? ''), (int) $user['id']);
-            PaymentPage::flash('success', 'Pedido eliminado correctamente.');
+            $deleted = $orders->deleteOrder($orderId, (string) ($_POST['orderVersion'] ?? ''), (int) $user['id']);
+            PaymentPage::flash('success', $deleted ? 'Pedido eliminado correctamente.' : 'Pedido retirado. Se conservó el historial de cobros.');
             $target = 'index.php';
             break;
         case 'issue-remit':

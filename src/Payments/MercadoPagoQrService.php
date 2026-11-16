@@ -163,9 +163,19 @@ final class MercadoPagoQrService
         }
         $payment=$this->repo->payment($id);$db=$this->repo->db();$db->beginTransaction();
         try{
-            $q=$db->prepare('SELECT idPedido FROM pedido WHERE idPedido=? FOR UPDATE');$q->execute([(int)$payment['idPedido']]);
+            $q=$db->prepare('SELECT estado FROM pedido WHERE idPedido=? FOR UPDATE');$q->execute([(int)$payment['idPedido']]);
+            $orderState = $q->fetchColumn();
             $q=$db->prepare('SELECT idPago FROM pago WHERE idPago=? FOR UPDATE');$q->execute([$id]);
             $payment=$this->repo->payment($id);$before=(string)$payment['estadoPago'];$beforeAmount=(float)$payment['importe'];
+            $currentQr = $this->order($id);
+            $closed = in_array((string) $currentQr['status'], ['canceled', 'expired', 'failed', 'validation_rejected'], true);
+            if (($approved || $refund) && ($orderState === 'CANCELADO' || ($before === 'RECHAZADO' && $closed))) {
+                throw new PaymentException('Mercado Pago informó un movimiento sobre un cobro cerrado. Revisá la orden en Mercado Pago antes de conciliarlo.');
+            }
+            if ($before === 'RECHAZADO' && $closed && !$terminal) {
+                $db->commit();
+                return 'RECHAZADO';
+            }
             if($approved||$refund){
                 $new=$net>0.004?'APROBADO':'RECHAZADO';
                 $db->prepare('UPDATE pago SET estadoPago=?,importe=? WHERE idPago=?')->execute([$new,$net,$id]);
