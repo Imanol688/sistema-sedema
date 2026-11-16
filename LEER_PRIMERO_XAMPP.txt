@@ -1,0 +1,9 @@
+Instalacion limpia en XAMPP
+1. Extrae sedema-main dentro de C:\xampp\htdocs.
+2. Inicia Apache y MySQL. Importa database/install.sql en phpMyAdmin solo si aun no instalaste la base.
+3. Copia .env.example a .env si no existe. Si ya tienes .env, conserva tus ajustes y verifica DB_DATABASE=sedema_integrada.
+4. En Powershell:
+Set-Location 'C:\xampp\htdocs\sedema-main'
+& 'C:\xampp\php\php.exe' '.\database\create_admin.php' 'admin' 'admin@example.com' 'REEMPLAZA_ESTA_CLAVE' 'Admin' 'SEDEMA'
+Usa un correo valido y una clave nueva de al menos 12 caracteres. Completa el DNI provisional del legajo.
+5. Abre http://localhost/sedema-main/public/

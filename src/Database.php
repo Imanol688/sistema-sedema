@@ -19,7 +19,7 @@ final class Database
 
         $host = Config::get('DB_HOST', '127.0.0.1');
         $port = Config::get('DB_PORT', '3306');
-        $database = Config::get('DB_DATABASE', 'sedema_db');
+        $database = Config::get('DB_DATABASE', 'sedema_integrada');
         $dsn = "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4";
 
         try {
