@@ -15,3 +15,5 @@
 *.rar
 
 /install-hosting.sql
+/database/install-hosting.sql
+/alwaysdata.txt

@@ -1,8 +1,31 @@
 # SEDEMA · Gestión integral para corralón
 
-Versión 3.1 sobre la base integrada 3.0. PHP y MySQL/MariaDB para Personal y Usuarios, Ventas/Pedidos-Clientes, Pagos y Cobranzas, Inventario, Proveedores y Logística.
+**SEDEMA 3.1 · Primera versión estable del proyecto.** Sistema web interno para un corralón de materiales, desarrollado en PHP con MySQL o MariaDB. Esta versión reúne la operación comercial y logística, y se desplegó en alwaysdata para demostración y pruebas.
 
-La integración conserva las correcciones v2.2 de inventario, recepción de compras y despachos, incorpora los cambios comerciales y Mercado Pago QR del otro grupo y corrige la lectura de comentarios `#` y BOM UTF-8 en `.env`.
+[Instalación local](#instalación-local-desde-cero) · [Hosting](#instalación-en-hosting) · [Mercado Pago QR](#mercado-pago-qr) · [Pruebas](#pruebas-locales)
+
+## Componentes y funciones
+
+| Área | Funciones principales |
+|---|---|
+| Acceso y personal | Inicio de sesión, primer acceso, recuperación de contraseña, perfiles, legajos y liquidaciones. El Administrador gestiona los accesos y genera liquidaciones. |
+| Ventas y clientes | Padrón de clientes, pedidos por depósito y modalidad de entrega, ajustes comerciales y guardado de pedidos pendientes. El rol Vendedor consulta clientes para cargar pedidos. |
+| Pagos y cobranzas | Registro y verificación de cobros, cuenta corriente, QR de mostrador de Mercado Pago y emisión de remitos y facturas internas tras completar el pago. |
+| Inventario y depósito | Catálogo, existencias por depósito, movimientos, transferencias y control del disponible con reservas de pedidos activos. |
+| Proveedores y abastecimiento | Registro de proveedores, remitos de proveedor, recepciones parciales o totales y vista de impresión. |
+| Despacho y logística | Programación, reprogramación y cancelación de despachos, control de salida y devolución de mercadería. |
+
+El navegador accede a los puntos de entrada y recursos de `public/`. La lógica de acceso y de los módulos está en `src/`. El esquema, los scripts de migración y las herramientas de instalación están en `database/`. `storage/logs/` contiene registros de ejecución y `public/uploads/profiles/` aloja las fotos de perfil.
+
+## Evolución de versiones
+
+| Etapa | Cambios principales |
+|---|---|
+| Desarrollo inicial | Inicio de sesión, panel principal, alta de usuarios y permisos. Incorporación gradual de inventario, ventas, clientes, cobros y logística. |
+| 2.2 | Estabilización de inventario, logística y proveedores. Ajustes a recepciones y despachos. |
+| 3.0 integrada | Unificación de los módulos comerciales y logísticos y del esquema de datos. Incorporación de Mercado Pago QR, corrección de la lectura de `.env` y alineación del arranque en XAMPP con `sedema_integrada`. |
+| 3.1 | Guardado y recuperación de pedidos pendientes, reserva por depósito, selector de tarjeta, mejoras en el alta de proveedores, ajustes de tipografía y restricción de la gestión de clientes para el rol Vendedor. |
+| 3.1 estable | Instalación remota sobre un esquema asignado, configuración HTTPS y corrección de pedidos impagos con intentos de cobro cerrados, preservando su trazabilidad. Despliegue inicial en alwaysdata. |
 
 ## Requisitos
 
@@ -120,11 +143,64 @@ Las copias operativas entregadas por separado no forman parte de Git. Antes de f
 
 ## Instalación en hosting
 
-Seguí la [guía de despliegue y pruebas en alwaysdata](docs/HOSTING.md). Incluye la generación del SQL para un esquema asignado, la configuración HTTPS y el alta por SSH.
+En SEDEMA se usó alwaysdata para la demostración académica y para probar la aplicación en un servidor remoto. El servicio permite conservar PHP y MariaDB, publicar por HTTPS y administrar archivos y tareas de instalación por SFTP y SSH.
 
-## Configuración de pagos
+### Instalación remota desde cero
 
-Tarjeta y transferencia conservan el adaptador genérico y su modo `mock`. Mercado Pago QR utiliza un cliente separado. Configurar las variables `MP_` de `.env.example` para la cuenta y caja propias. No hay aprobación por escanear únicamente: el sistema debe verificar la acreditación.
+1. Creá una base vacía y un usuario autorizado sobre ese esquema en el panel del proveedor. Anotá el host, puerto, nombre de la base y usuario tal como aparecen en el panel.
+2. Desde la raíz del proyecto generá el SQL de instalación remota. El comando funciona con Bash o CMD. En XAMPP reemplazá `php` por `C:\xampp\php\php.exe` si hace falta. En Windows PowerShell 5.1 usá CMD para esta redirección y así conservar UTF-8.
+
+   ```sh
+   php database/export_hosting_install.php > install-hosting.sql
+   ```
+
+3. Abrí phpMyAdmin, seleccioná la base vacía asignada e importá `install-hosting.sql`. También podés usar el cliente MySQL pasando el nombre de esa base como argumento. El instalador usa el esquema seleccionado y crea 43 tablas. Revisá los errores de importación antes de seguir. Si falla a mitad de camino, revisá la causa y repetí sobre otra base vacía.
+4. Subí el proyecto por SFTP y configurá el sitio PHP 8.1 o superior con el directorio `sedema-main/public/` como raíz web. Asegurá escritura en `storage/logs` y `public/uploads/profiles`. Activá HTTPS con certificado válido y habilitá la redirección de HTTP a HTTPS.
+5. Copiá `.env.hosting.example` a `.env` en la raíz del proyecto, un nivel por encima de `public/`. Usá la URL HTTPS del sitio, sin el sufijo `/public`. Cargá la conexión del paso 1 y generá `APP_KEY` con `php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'`. Mantené fuera de `public/` el SQL generado, el archivo de entorno y los logs.
+6. Ingresá por SSH, ubicáte en la carpeta que contiene `database/` y creá el administrador.
+
+   ```sh
+   php database/create_admin.php admin admin@example.com 'CLAVE-PROPIA-DE-12-O-MAS-CARACTERES' Admin SEDEMA
+   ```
+
+   Sustituí correo y contraseña. Entrá por HTTPS y actualizá el DNI provisional del legajo antes de operar con datos reales.
+
+### Diagnóstico de conexión
+
+Si el inicio de sesión muestra un error genérico, buscá su código en `storage/logs/app.log`. Un error `[2002] Connection refused` requiere revisar el servidor y el puerto en el `.env` remoto. Copiá los datos de **Bases de datos → MySQL** del panel del proveedor. Si aparece `[1049] Unknown database`, verificá que el nombre completo del esquema coincida con el de la importación.
+
+## Mercado Pago QR
+
+En un entorno de prueba, usá datos ficticios y las credenciales de prueba de la aplicación. Creá una sucursal y una caja para el vendedor correspondiente, con modo `pdv`. Completá estas variables en el `.env` del servidor:
+
+| Variable | Valor |
+|---|---|
+| `MP_ENVIRONMENT` | `test` para la prueba. |
+| `MP_ACCESS_TOKEN` | Access Token de prueba de la aplicación. |
+| `MP_SELLER_ID` | `user_id` numérico de la cuenta vendedora asociada a la caja. |
+| `MP_POS_EXTERNAL_ID` | `external_id` alfanumérico de la caja, de hasta 40 caracteres. |
+| `MP_WEBHOOK_SECRET` | Secreto de firma de Webhooks de la aplicación. |
+
+Registrá la URL HTTPS `/payments/mp-webhook.php` del sitio para el evento **Órdenes** en el entorno de prueba. Generá un cobro en SEDEMA y escaneá el QR de la caja con una cuenta compradora de prueba. Después comprobá el estado del cobro en SEDEMA. Tarjeta y transferencia conservan el adaptador genérico y su modo `mock`.
+
+### Corrección de pedidos con intentos de cobro
+
+El operador puede verificar o cancelar un QR desde la ficha del cobro. El pedido se habilita para corrección cuando todos sus intentos están rechazados y, para QR, consta un cierre terminal verificado. Ante una verificación fallida, un QR sin identificación confirmada, un cobro acreditado o devuelto, o un movimiento asociado, el pedido sigue protegido. Para cheques pendientes, resolvé el cheque desde su ficha. Si la pasarela genérica mantiene un intento pendiente, resolvelo en la pasarela y verificá el estado en SEDEMA.
+
+Al retirar un pedido con intentos cerrados, pasa a cancelado y sale de Cobros y Pedidos. Conserva sus artículos y registros de cobro para auditoría. Un pedido sin intentos ni dependencias puede eliminarse físicamente. Si una notificación posterior contradice el cierre confirmado, revisá la orden en Mercado Pago y conciliá el caso antes de continuar.
+
+### Aceptación en el entorno remoto
+
+| Caso | Resultado esperado |
+|---|---|
+| Instalación y acceso | 43 tablas, alta por SSH y acceso HTTPS con los roles esperados. |
+| Directorio público | La URL raíz abre SEDEMA. Las rutas a `.env`, `database/install.sql` y `storage/logs/app.log` devuelven 403 o 404 y no muestran su contenido. |
+| Pedido sin intentos | Se edita o elimina. La eliminación libera el disponible del depósito. |
+| QR pendiente | El pedido sigue protegido. La ficha permite verificar o cancelar el QR. |
+| QR cancelado o vencido | Tras confirmar el cierre, se puede editar o retirar el pedido. El retiro conserva intento, orden externa y auditoría, y libera la reserva. |
+| QR acreditado | Mercado Pago notifica por HTTPS, SEDEMA verifica la orden y acredita una sola vez. Repetí la notificación y compará el total pagado y los movimientos de cuenta. |
+| Recepción y despacho | La recepción parcial actualiza el stock. El pedido cobrado permite emitir comprobantes y despachar. La devolución repone el stock. |
+| Respaldo | Exportá la base, importala en un esquema de prueba separado y verificá pedidos, cobros y existencias contra el original. |
 
 ## Pruebas locales
 
@@ -147,4 +223,4 @@ válido con artículos y stock suficiente.
 
 Para la integración 3.0 se verificó la sintaxis PHP/JavaScript y el circuito de servicios con PHP 8.3.6 y MariaDB 10.11.14. La integración incluyó comprobaciones de conservación de datos, claves foráneas, acceso HTTP y reenvíos concurrentes. El parche del lector de entorno se comprobó con la plantilla completa, comentarios con paréntesis, BOM, CRLF, valores entre comillas y prioridad de las variables MP del proyecto. No se incorpora una suite automatizada al repositorio.
 
-La 3.1 pasó la prueba local del equipo. Sigue pendiente la validación en hosting. Durante las comprobaciones de la 3.0 no se hicieron cobros externos ni envíos SMTP durante estas comprobaciones. Los datos históricos incompletos se señalan sin inventar entregas. La agenda detecta coincidencias exactas de horario, sin duración de viajes; las devoluciones de despachos se registran por el despacho completo. Los comprobantes son internos: no se incorpora facturación fiscal electrónica.
+La 3.1 pasó la prueba local del equipo. En alwaysdata se verificaron el formulario de inicio por HTTPS, la conexión a MariaDB y el alta del administrador por SSH. Quedan pendientes la prueba de Mercado Pago QR de punta a punta, el envío SMTP en el hosting y las mediciones de rendimiento bajo carga. Los datos históricos incompletos se señalan sin inventar entregas. La agenda detecta coincidencias exactas de horario, sin duración de viajes; las devoluciones de despachos se registran por el despacho completo. Los comprobantes son internos: no se incorpora facturación fiscal electrónica.
