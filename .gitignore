@@ -1,7 +1,6 @@
 /.env
 /.env.*
 !/.env.example
-!/.env.hosting.example
 /storage/logs/*.log
 !/storage/logs/.gitkeep
 /public/uploads/profiles/*

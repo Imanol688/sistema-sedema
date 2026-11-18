@@ -1,9 +1,6 @@
--- SEDEMA INTEGRACION 3.0-rc1 | INSTALACION LIMPIA EXCLUSIVAMENTE.
--- Base: estructura de sedema_db(1).sql; sin usuarios ni operaciones de prueba.
--- Requiere una base sedema_integrada vacia. No ejecutar en una instalacion existente.
--- El DDL no es transaccional; ante error detenerse y revisar, no usar --force.
-CREATE DATABASE IF NOT EXISTS sedema_integrada CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE sedema_integrada;
+-- SEDEMA 3.1 | Instalación limpia
+-- Seleccioná una base vacía antes de ejecutar el script completo.
+-- Si la importación falla, revisá el error y repetila en otra base vacía.
 SET NAMES utf8mb4;
 SET SESSION sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
 SET SESSION default_storage_engine=InnoDB;
